@@ -5,7 +5,9 @@ VisualStudioVersion = 16.0.30907.101
 MinimumVisualStudioVersion = 10.0.40219.1
 Project("{9A19103F-16F7-4668-BE54-9A1E7A4F7556}") = "Client", "Client\Client.csproj", "{0FB068F1-665A-43BA-A227-C2A8B0CB0049}"
 EndProject
-Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "ActionCableSharp", "ActionCableSharp\ActionCableSharp.csproj", "{034AAA90-8BD8-4EED-AACD-66546FFEE7D1}"
+Project("{9A19103F-16F7-4668-BE54-9A1E7A4F7556}") = "ActionCableSharp", "ActionCableSharp\ActionCableSharp.csproj", "{034AAA90-8BD8-4EED-AACD-66546FFEE7D1}"
+EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "ActionCableSharp.Tests", "ActionCableSharp.Tests\ActionCableSharp.Tests.csproj", "{EE3A5F6F-C765-4D04-AFE1-954B5CC16671}"
 EndProject
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution
@@ -21,6 +23,10 @@ Global
 		{034AAA90-8BD8-4EED-AACD-66546FFEE7D1}.Debug|Any CPU.Build.0 = Debug|Any CPU
 		{034AAA90-8BD8-4EED-AACD-66546FFEE7D1}.Release|Any CPU.ActiveCfg = Release|Any CPU
 		{034AAA90-8BD8-4EED-AACD-66546FFEE7D1}.Release|Any CPU.Build.0 = Release|Any CPU
+		{EE3A5F6F-C765-4D04-AFE1-954B5CC16671}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{EE3A5F6F-C765-4D04-AFE1-954B5CC16671}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{EE3A5F6F-C765-4D04-AFE1-954B5CC16671}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{EE3A5F6F-C765-4D04-AFE1-954B5CC16671}.Release|Any CPU.Build.0 = Release|Any CPU
 	EndGlobalSection
 	GlobalSection(SolutionProperties) = preSolution
 		HideSolutionNode = FALSE

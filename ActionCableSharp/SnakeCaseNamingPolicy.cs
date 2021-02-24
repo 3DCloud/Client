@@ -16,19 +16,12 @@ namespace ActionCableSharp
             {
                 char c = name[i];
 
-                if (char.IsUpper(c))
+                if (i > 0 && char.IsUpper(c) && (char.IsLower(name[i - 1]) || (i < name.Length - 1 && char.IsLower(name[i + 1]))))
                 {
-                    if (i > 0 && !char.IsUpper(name[i - 1]))
-                    {
-                        builder.Append('_');
-                    }
+                    builder.Append('_');
+                }
 
-                    builder.Append(char.ToLower(c));
-                }
-                else
-                {
-                    builder.Append(c);
-                }
+                builder.Append(char.ToLower(c));
             }
 
             return builder.ToString();
