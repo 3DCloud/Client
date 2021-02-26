@@ -41,21 +41,22 @@ namespace ActionCableSharp
         /// </summary>
         public ClientState State { get; private set; }
 
-        private ILogger<ActionCableClient> logger;
-        private ClientWebSocket? webSocket;
-        private CancellationTokenSource? loopCancellationTokenSource;
-        private Thread? sendThread;
-        private Thread? receiveThread;
-
+        private readonly ILogger<ActionCableClient> logger;
+        private readonly IWebSocketFactory webSocketFactory;
         private readonly List<ActionCableSubscription> subscriptions;
         private readonly ConcurrentQueue<ActionCableOutgoingMessage> sendQueue;
+
+        private IWebSocket? webSocket;
+        private CancellationTokenSource? loopCancellationTokenSource;
 
         /// <summary>
         /// Creates a new instance of the <see cref="ActionCableClient"/> class.
         /// </summary>
         /// <param name="uri">URI pointing to an Action Cable mount path.</param>
         /// <param name="origin">Origin to use in the headers of requests.</param>
-        public ActionCableClient(Uri uri, string origin)
+        public ActionCableClient(Uri uri, string origin) : this(uri, origin, new ClientWebSocketFactory()) { }
+
+        internal ActionCableClient(Uri uri, string origin, IWebSocketFactory webSocketFactory)
         {
             Uri = uri;
             Origin = origin;
@@ -75,9 +76,9 @@ namespace ActionCableSharp
             };
 
             logger = Logging.LoggerFactory.CreateLogger<ActionCableClient>();
+            this.webSocketFactory = webSocketFactory;
             subscriptions = new List<ActionCableSubscription>();
             sendQueue = new ConcurrentQueue<ActionCableOutgoingMessage>();
-            loopCancellationTokenSource = new CancellationTokenSource();
         }
 
         /// <summary>
@@ -90,7 +91,7 @@ namespace ActionCableSharp
 
         public async Task DisconnectAsync()
         {
-            if (webSocket?.State != WebSocketState.Open) return;
+            if (webSocket?.IsConnected != true) return;
 
             await webSocket.CloseAsync(WebSocketCloseStatus.NormalClosure, "Closed by client", CancellationToken.None);
 
@@ -107,7 +108,10 @@ namespace ActionCableSharp
             var subscription = new ActionCableSubscription(this, identifier);
             subscriptions.Add(subscription);
 
-            EnqueueCommand("subscribe", identifier);
+            if (webSocket?.IsConnected == true)
+            {
+                EnqueueCommand("subscribe", identifier);
+            }
 
             return subscription;
         }
@@ -137,29 +141,33 @@ namespace ActionCableSharp
 
         private async Task ReconnectAsync(bool initial = true)
         {
-            logger.LogInformation($"Connecting to {Uri}");
             int reconnectDelayIndex = 0;
 
-            while (webSocket?.State != WebSocketState.Open)
+            while (webSocket?.IsConnected != true)
             {
+                webSocket?.Dispose();
+                webSocket = null;
+
                 loopCancellationTokenSource?.Cancel();
+                loopCancellationTokenSource = null;
 
                 State = initial ? ClientState.Pending : ClientState.Reconnecting;
 
                 try
                 {
-                    webSocket = new ClientWebSocket();
-                    webSocket.Options.SetRequestHeader("Origin", Origin);
+                    logger.LogInformation($"Connecting to {Uri}");
+
+                    webSocket = webSocketFactory.CreateWebSocket();
+                    webSocket.SetRequestHeader("Origin", Origin);
                     await webSocket.ConnectAsync(Uri, CancellationToken.None);
 
                     logger.LogInformation($"Connected to {Uri}");
 
-                    sendThread = new Thread(SendLoop);
-                    receiveThread = new Thread(ReceiveLoop);
                     loopCancellationTokenSource = new CancellationTokenSource();
 
-                    sendThread.Start();
-                    receiveThread.Start();
+                    // don't await these since they run until the connection is closed/interrupted
+                    _ = Task.Factory.StartNew(SendLoop, TaskCreationOptions.LongRunning).ConfigureAwait(false);
+                    _ = Task.Factory.StartNew(ReceiveLoop, TaskCreationOptions.LongRunning).ConfigureAwait(false);
 
                     foreach (var subscription in subscriptions)
                     {
@@ -176,13 +184,13 @@ namespace ActionCableSharp
             }
         }
 
-        private async void SendLoop()
+        private async Task SendLoop()
         {
-            logger.LogInformation($"Started outgoing message thread");
+            logger.LogInformation($"Started outgoing message task");
 
             try
             {
-                while (loopCancellationTokenSource?.IsCancellationRequested == false && webSocket?.State == WebSocketState.Open)
+                while (loopCancellationTokenSource?.IsCancellationRequested == false && webSocket?.IsConnected == true)
                 {
                     if (!sendQueue.TryDequeue(out ActionCableOutgoingMessage message)) continue;
 
@@ -202,23 +210,23 @@ namespace ActionCableSharp
                 }
             }
             catch (TaskCanceledException) { }
-            catch (WebSocketException)
+            catch (WebSocketException ex)
             {
-                await HandleWebSocketException();
+                await HandleWebSocketException(ex, "Failed to send message");
             }
 
-            logger.LogInformation($"Stopped outgoing message thread");
+            logger.LogInformation($"Outgoing message task ended");
         }
 
-        private async void ReceiveLoop()
+        private async Task ReceiveLoop()
         {
-            logger.LogInformation($"Started incoming message thread");
+            logger.LogInformation($"Started incoming message task");
 
             try
             {
                 var builder = new StringBuilder(BufferSize);
 
-                while (loopCancellationTokenSource?.IsCancellationRequested == false && webSocket?.State == WebSocketState.Open)
+                while (loopCancellationTokenSource?.IsCancellationRequested == false && webSocket?.IsConnected == true)
                 {
                     builder.Clear();
                     var buffer = new byte[BufferSize];
@@ -233,26 +241,37 @@ namespace ActionCableSharp
 
                     string message = builder.ToString();
 
-                    if (result.MessageType == WebSocketMessageType.Text)
+                    switch (result.MessageType)
                     {
-                        try
-                        {
-                            ProcessMessage(message);
-                        }
-                        catch (JsonException ex)
-                        {
-                            logger.LogError("Failed to process message: " + ex);
-                        }
+                        case WebSocketMessageType.Text:
+                            try
+                            {
+                                ProcessMessage(message);
+                            }
+                            catch (JsonException ex)
+                            {
+                                logger.LogError("Failed to process message: " + ex);
+                            }
+
+                            break;
+
+                        case WebSocketMessageType.Close:
+                            logger.LogInformation("Connection closed by remote host");
+                            break;
+
+                        default:
+                            logger.LogWarning("Unexpected message type " + result.MessageType);
+                            break;
                     }
                 }
             }
             catch (TaskCanceledException) { }
-            catch (WebSocketException)
+            catch (WebSocketException ex)
             {
-                await HandleWebSocketException();
+                await HandleWebSocketException(ex, "Failed to receive message");
             }
 
-            logger.LogInformation($"Stopped incoming message thread");
+            logger.LogInformation($"Incoming message task ended");
         }
 
         private void ProcessMessage(string messageString)
@@ -285,14 +304,12 @@ namespace ActionCableSharp
             }
         }
 
-        private async Task HandleWebSocketException()
+        private async Task HandleWebSocketException(WebSocketException exception, string message)
         {
-            if (webSocket?.State == WebSocketState.Aborted)
-            {
-                loopCancellationTokenSource?.Cancel();
-                State = ClientState.Reconnecting;
-                await ReconnectAsync();
-            }
+            logger.LogError(exception, message);
+            loopCancellationTokenSource?.Cancel();
+            State = ClientState.Reconnecting;
+            await ReconnectAsync();
         }
     }
 }

@@ -2,7 +2,9 @@
 
   <PropertyGroup>
     <TargetFramework>net5.0</TargetFramework>
-
+    <LangVersion>9</LangVersion>
+    <Nullable>enable</Nullable>
+    <WarningsAsErrors>nullable</WarningsAsErrors>
     <IsPackable>false</IsPackable>
   </PropertyGroup>
 
@@ -22,6 +24,10 @@
 
   <ItemGroup>
     <ProjectReference Include="..\ActionCableSharp\ActionCableSharp.csproj" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <DotNetCliToolReference Include="dotnet-reportgenerator-cli" Version="4.6.7" />
   </ItemGroup>
 
 </Project>
