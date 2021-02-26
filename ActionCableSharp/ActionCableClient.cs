@@ -18,8 +18,8 @@ namespace ActionCableSharp
     /// </summary>
     public class ActionCableClient : IDisposable
     {
-        private const int ReconnectDelay = 2000;
         private const int BufferSize = 8192;
+        private static readonly int[] ReconnectDelays = new int[] { 1_000, 2_000, 5_000, 10_000, 15_000, 20_000, 30_000 };
 
         /// <summary>
         /// URI to Action Cable mount path.
@@ -138,6 +138,7 @@ namespace ActionCableSharp
         private async Task ReconnectAsync(bool initial = true)
         {
             logger.LogInformation($"Connecting to {Uri}");
+            int reconnectDelayIndex = 0;
 
             while (webSocket?.State != WebSocketState.Open)
             {
@@ -167,8 +168,10 @@ namespace ActionCableSharp
                 }
                 catch (WebSocketException)
                 {
-                    logger.LogError($"Failed to connect, waiting {ReconnectDelay} ms before retrying...");
-                    await Task.Delay(ReconnectDelay);
+                    int reconnectDelay = ReconnectDelays[reconnectDelayIndex];
+                    logger.LogError($"Failed to connect, waiting {reconnectDelay} ms before retrying...");
+                    await Task.Delay(reconnectDelay);
+                    reconnectDelayIndex = Math.Min(reconnectDelayIndex + 1, ReconnectDelays.Length - 1);
                 }
             }
         }
