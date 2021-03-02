@@ -3,10 +3,10 @@ using Client;
 using Moq;
 using System;
 using System.Net.WebSockets;
+using System.Text.Json;
 using System.Threading;
 using System.Threading.Tasks;
 using Xunit;
-using Xunit.Abstractions;
 
 namespace ActionCableSharp.Tests
 {
@@ -68,6 +68,69 @@ namespace ActionCableSharp.Tests
         public async Task EnqueueMessage_Subscribe_ReturnsValidSubscription()
         {
             // Arrange
+            var uri = new Uri("ws://example.com");
+
+            var mockWebSocket = new Mock<IWebSocket>();
+            mockWebSocket.SetupGet(ws => ws.IsConnected).Returns(true);
+
+            var mockWebSocketFactory = new Mock<IWebSocketFactory>();
+            mockWebSocketFactory.Setup(f => f.CreateWebSocket()).Returns(mockWebSocket.Object);
+
+            var client = new ActionCableClient(uri, "dummy", mockWebSocketFactory.Object);
+            var identifier = new Identifier("channel_name");
+
+            ArraySegment<byte> bytes = JsonSerializer.SerializeToUtf8Bytes(new ActionCableOutgoingMessage
+            {
+                Command = "subscribe",
+                Identifier = JsonSerializer.Serialize(identifier, client.JsonSerializerOptions),
+                Data = null
+            }, client.JsonSerializerOptions);
+
+            // Act
+            await client.ConnectAsync();
+            ActionCableSubscription subscription = await client.Subscribe(identifier);
+
+            // Assert
+            Assert.Equal("channel_name", subscription.Identifier.ChannelName);
+            mockWebSocket.Verify(ws => ws.SendAsync(bytes, WebSocketMessageType.Text, true, CancellationToken.None), Times.Once);
+        }
+
+        [Fact]
+        public async Task EnqueueMessage_Perform_SendsMessage()
+        {
+            // Arrange
+            var uri = new Uri("ws://example.com");
+
+            var mockWebSocket = new Mock<IWebSocket>();
+            mockWebSocket.SetupGet(ws => ws.IsConnected).Returns(true);
+
+            var mockWebSocketFactory = new Mock<IWebSocketFactory>();
+            mockWebSocketFactory.Setup(f => f.CreateWebSocket()).Returns(mockWebSocket.Object);
+
+            var client = new ActionCableClient(uri, "dummy", mockWebSocketFactory.Object);
+            var identifier = new Identifier("channel_name");
+            var data = new SampleAction("test");
+            
+            ArraySegment<byte> bytes = JsonSerializer.SerializeToUtf8Bytes(new ActionCableOutgoingMessage {
+                Command = "message",
+                Identifier = JsonSerializer.Serialize(identifier, client.JsonSerializerOptions),
+                Data = JsonSerializer.Serialize(data, client.JsonSerializerOptions)
+            }, client.JsonSerializerOptions);
+
+            // Act
+            await client.ConnectAsync();
+            ActionCableSubscription subscription = await client.Subscribe(identifier);
+            await subscription.Perform(data);
+
+            // Assert
+            Assert.Equal("channel_name", subscription.Identifier.ChannelName);
+            mockWebSocket.Verify(ws => ws.SendAsync(bytes, WebSocketMessageType.Text, true, CancellationToken.None), Times.Once);
+        }
+
+        [Fact]
+        public async Task EnqueueMessage_PerformWithLargePayload_SendsMessageInChunks()
+        {
+            // Arrange
             Uri uri = new Uri("ws://example.com");
 
             Mock<IWebSocket> mockWebSocket = new Mock<IWebSocket>();
@@ -81,10 +144,12 @@ namespace ActionCableSharp.Tests
             // Act
             await client.ConnectAsync();
             ActionCableSubscription subscription = await client.Subscribe(new Identifier("channel_name"));
+            await subscription.Perform(new SampleAction(new string('a', 10_000)));
 
             // Assert
             Assert.Equal("channel_name", subscription.Identifier.ChannelName);
-            mockWebSocket.Verify(ws => ws.SendAsync(It.IsAny<ArraySegment<byte>>(), WebSocketMessageType.Text, true, CancellationToken.None), Times.Once);
+            mockWebSocket.Verify(ws => ws.SendAsync(It.IsAny<ArraySegment<byte>>(), WebSocketMessageType.Text, false, CancellationToken.None), Times.Once);
+            mockWebSocket.Verify(ws => ws.SendAsync(It.IsAny<ArraySegment<byte>>(), WebSocketMessageType.Text, true, CancellationToken.None), Times.Exactly(2));
         }
     }
 }

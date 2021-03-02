@@ -4,7 +4,6 @@ using System;
 using System.Collections.Generic;
 using System.IO;
 using System.Net.WebSockets;
-using System.Text;
 using System.Text.Json;
 using System.Text.Json.Serialization;
 using System.Threading;
@@ -192,7 +191,7 @@ namespace ActionCableSharp
             byte[] buffer = new byte[BufferSize];
             int bytesRead;
 
-            while ((bytesRead = stream.Read(buffer)) > 0)
+            while ((bytesRead = await stream.ReadAsync(buffer, cancellationToken)) > 0)
             {
                 await webSocket.SendAsync(new ArraySegment<byte>(buffer, 0, bytesRead), WebSocketMessageType.Text, stream.Position >= stream.Length - 1, cancellationToken).ConfigureAwait(false);
             }
@@ -204,29 +203,27 @@ namespace ActionCableSharp
 
             try
             {
-                var builder = new StringBuilder(BufferSize);
-
                 while (loopCancellationTokenSource?.IsCancellationRequested == false && webSocket?.IsConnected == true)
                 {
-                    builder.Clear();
+                    using var stream = new MemoryStream();
                     var buffer = new byte[BufferSize];
                     WebSocketReceiveResult result;
 
                     do
                     {
                         result = await webSocket.ReceiveAsync(buffer, loopCancellationTokenSource.Token).ConfigureAwait(false);
-                        builder.Append(Encoding.UTF8.GetString(new ArraySegment<byte>(buffer, 0, result.Count)));
+                        stream.Write(new ArraySegment<byte>(buffer, 0, result.Count));
                     }
                     while (!result.EndOfMessage);
 
-                    string message = builder.ToString();
+                    stream.Position = 0;
 
                     switch (result.MessageType)
                     {
                         case WebSocketMessageType.Text:
                             try
                             {
-                                ProcessMessage(message);
+                                _ = ProcessMessage(stream);
                             }
                             catch (JsonException ex)
                             {
@@ -250,13 +247,18 @@ namespace ActionCableSharp
             {
                 await HandleWebSocketException(ex, "Failed to receive message").ConfigureAwait(false);
             }
+            catch (Exception ex)
+            {
+                logger.LogError(ex.Message);
+                logger.LogError(ex.StackTrace);
+            }
 
             logger.LogInformation($"Incoming message task ended");
         }
 
-        private void ProcessMessage(string messageString)
+        private async Task ProcessMessage(Stream stream)
         {
-            ActionCableIncomingMessage? message = JsonSerializer.Deserialize<ActionCableIncomingMessage>(messageString, JsonSerializerOptions);
+            ActionCableIncomingMessage? message = await JsonSerializer.DeserializeAsync<ActionCableIncomingMessage>(stream, JsonSerializerOptions);
 
             if (!message.HasValue) return;
 
@@ -278,8 +280,9 @@ namespace ActionCableSharp
                 case MessageType.None:
                     foreach (var subscription in subscriptions)
                     {
-                        Task.Run(() => subscription.HandleMessage(message.Value));
+                        subscription.HandleMessage(message.Value);
                     }
+
                     break;
             }
         }
