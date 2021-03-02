@@ -13,21 +13,21 @@ namespace ActionCableSharp.Tests
     public class ActionCableClientTests
     {
         [Fact]
-        public async Task Connect_HostAvailableImmediately_ConnectsSuccessfully()
+        public async Task ConnectAsync_HostAvailableImmediately_ConnectsSuccessfully()
         {
             // Arrange
-            Uri uri = new Uri("ws://example.com");
-            bool connected = false;
+            var uri = new Uri("ws://example.com");
+            var connected = false;
 
-            Mock<IWebSocket> mockWebSocket = new Mock<IWebSocket>();
+            var mockWebSocket = new Mock<IWebSocket>();
             mockWebSocket.Setup(ws => ws.SetRequestHeader(It.IsAny<string>(), It.IsAny<string?>()));
             mockWebSocket.Setup(ws => ws.ConnectAsync(It.IsAny<Uri>(), It.IsAny<CancellationToken>())).Callback(() => connected = true).Returns(Task.CompletedTask);
             mockWebSocket.SetupGet(ws => ws.IsConnected).Returns(() => connected);
 
-            Mock<IWebSocketFactory> mockWebSocketFactory = new Mock<IWebSocketFactory>();
+            var mockWebSocketFactory = new Mock<IWebSocketFactory>();
             mockWebSocketFactory.Setup(f => f.CreateWebSocket()).Returns(mockWebSocket.Object);
 
-            ActionCableClient client = new ActionCableClient(uri, "dummy", mockWebSocketFactory.Object);
+            var client = new ActionCableClient(uri, "dummy", mockWebSocketFactory.Object);
 
             // Act
             await client.ConnectAsync();
@@ -38,23 +38,23 @@ namespace ActionCableSharp.Tests
         }
 
         [Fact]
-        public async Task Connect_HostAvailableAfterRetry_ConnectsSuccessfully()
+        public async Task ConnectAsync_HostAvailableAfterRetry_ConnectsSuccessfully()
         {
             // Arrange
-            Uri uri = new Uri("ws://example.com");
-            bool connected = false;
+            var uri = new Uri("ws://example.com");
+            var connected = false;
 
-            Mock<IWebSocket> mockWebSocket = new Mock<IWebSocket>();
+            var mockWebSocket = new Mock<IWebSocket>();
             mockWebSocket.Setup(ws => ws.SetRequestHeader(It.IsAny<string>(), It.IsAny<string?>()));
             mockWebSocket.SetupSequence(ws => ws.ConnectAsync(It.IsAny<Uri>(), It.IsAny<CancellationToken>()))
                 .ThrowsAsync(new WebSocketException())
                 .Returns(() => { connected = true; return Task.CompletedTask; });
             mockWebSocket.SetupGet(ws => ws.IsConnected).Returns(() => connected);
 
-            Mock<IWebSocketFactory> mockWebSocketFactory = new Mock<IWebSocketFactory>();
+            var mockWebSocketFactory = new Mock<IWebSocketFactory>();
             mockWebSocketFactory.Setup(f => f.CreateWebSocket()).Returns(mockWebSocket.Object);
 
-            ActionCableClient client = new ActionCableClient(uri, "dummy", mockWebSocketFactory.Object);
+            var client = new ActionCableClient(uri, "dummy", mockWebSocketFactory.Object);
 
             // Act
             await client.ConnectAsync();
@@ -65,7 +65,7 @@ namespace ActionCableSharp.Tests
         }
 
         [Fact]
-        public async Task EnqueueMessage_Subscribe_ReturnsValidSubscription()
+        public async Task Subscribe_WithValidIdentifier_ReturnsValidSubscription()
         {
             // Arrange
             var uri = new Uri("ws://example.com");
@@ -96,7 +96,7 @@ namespace ActionCableSharp.Tests
         }
 
         [Fact]
-        public async Task EnqueueMessage_Perform_SendsMessage()
+        public async Task Perform_WithValidMessage_SendsMessage()
         {
             // Arrange
             var uri = new Uri("ws://example.com");
@@ -128,18 +128,18 @@ namespace ActionCableSharp.Tests
         }
 
         [Fact]
-        public async Task EnqueueMessage_PerformWithLargePayload_SendsMessageInChunks()
+        public async Task Perform_WithLargePayload_SendsMessageInChunks()
         {
             // Arrange
-            Uri uri = new Uri("ws://example.com");
+            var uri = new Uri("ws://example.com");
 
-            Mock<IWebSocket> mockWebSocket = new Mock<IWebSocket>();
+            var mockWebSocket = new Mock<IWebSocket>();
             mockWebSocket.SetupGet(ws => ws.IsConnected).Returns(true);
 
-            Mock<IWebSocketFactory> mockWebSocketFactory = new Mock<IWebSocketFactory>();
+            var mockWebSocketFactory = new Mock<IWebSocketFactory>();
             mockWebSocketFactory.Setup(f => f.CreateWebSocket()).Returns(mockWebSocket.Object);
 
-            ActionCableClient client = new ActionCableClient(uri, "dummy", mockWebSocketFactory.Object);
+            var client = new ActionCableClient(uri, "dummy", mockWebSocketFactory.Object);
 
             // Act
             await client.ConnectAsync();
