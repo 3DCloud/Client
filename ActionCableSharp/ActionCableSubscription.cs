@@ -1,6 +1,7 @@
 ﻿using ActionCableSharp.Internal;
 using System;
 using System.Text.Json;
+using System.Threading.Tasks;
 
 namespace ActionCableSharp
 {
@@ -21,18 +22,14 @@ namespace ActionCableSharp
             this.client = client;
         }
 
-        public void Perform(ActionMessage data)
+        public Task Perform(ActionMessage data)
         {
-            //if (State != SubscriptionState.Subscribed) throw new InvalidOperationException("Subscription is not in a valid state");
-
-            client.EnqueueCommand("message", Identifier, data);
+            return client.EnqueueCommand("message", Identifier, data);
         }
 
-        public void Unsubscribe()
+        public async Task Unsubscribe()
         {
-            //if (State != SubscriptionState.Subscribed) throw new InvalidOperationException("Subscription is not in a valid state");
-
-            client.Unsubscribe(this);
+            await client.Unsubscribe(this);
 
             State = SubscriptionState.Unsubscribed;
         }
