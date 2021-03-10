@@ -4,11 +4,12 @@ namespace Client
 {
     internal class SampleAction : ActionMessage
     {
-        public string Content { get; }
-
-        public SampleAction(string content) : base("sample_action")
+        public SampleAction(string content)
+            : base("sample_action")
         {
-            Content = content;
+            this.Content = content;
         }
+
+        public string Content { get; }
     }
 }

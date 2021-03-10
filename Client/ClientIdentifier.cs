@@ -1,24 +1,41 @@
-﻿using ActionCableSharp;
-using System;
+﻿using System;
+using ActionCableSharp;
 
 namespace Client
 {
+    /// <summary>
+    /// Identifies a 3DCloud client.
+    /// </summary>
     internal class ClientIdentifier : Identifier
     {
-        public Guid Guid { get; }
-        public string Key { get; }
-
-        public ClientIdentifier(Guid guid, string key) : base("ClientsChannel")
+        /// <summary>
+        /// Initializes a new instance of the <see cref="ClientIdentifier"/> class.
+        /// </summary>
+        /// <param name="guid">GUID that identifies this client.</param>
+        /// <param name="key">The key used to authenticate the client when connecting to the server.</param>
+        public ClientIdentifier(Guid guid, string key)
+            : base("ClientsChannel")
         {
-            Guid = guid;
-            Key = key;
+            this.Guid = guid;
+            this.Key = key;
         }
 
+        /// <summary>
+        /// Gets the GUID that identifies this client.
+        /// </summary>
+        public Guid Guid { get; }
+
+        /// <summary>
+        /// Gets the key used to authenticate the client when connecting to the server.
+        /// </summary>
+        public string Key { get; }
+
+        /// <inheritdoc/>
         public override bool Equals(Identifier? other)
         {
             if (other == null || other is not ClientIdentifier clientIdentifier) return false;
 
-            return ChannelName == clientIdentifier.ChannelName && Guid == clientIdentifier.Guid && Key == clientIdentifier.Key;
+            return this.ChannelName == clientIdentifier.ChannelName && this.Guid == clientIdentifier.Guid && this.Key == clientIdentifier.Key;
         }
     }
 }

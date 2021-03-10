@@ -5,48 +5,66 @@ using System.Threading.Tasks;
 
 namespace ActionCableSharp.Internal
 {
+    /// <summary>
+    /// Queues tasks and runs them one by one sequentially.
+    /// </summary>
     internal class SequentialTaskRunner
     {
         private readonly ConcurrentQueue<SequentialTask> taskQueue = new ConcurrentQueue<SequentialTask>();
         private Task? currentTask;
 
+        /// <summary>
+        /// Enqueue a <see cref="Task"/>.
+        /// </summary>
+        /// <param name="task">The <see cref="Task"/> to enqueue.</param>
+        /// <returns>A task that finishes once the queued task has run.</returns>
         public Task Enqueue(Func<Task> task)
         {
             var tcs = new TaskCompletionSource();
 
-            taskQueue.Enqueue(new VoidSequentialTask(task, tcs));
+            this.taskQueue.Enqueue(new VoidSequentialTask(task, tcs));
 
-            StartNext();
+            this.StartNext();
 
             return tcs.Task;
         }
 
+        /// <summary>
+        /// Enqueue a <see cref="Task{T}"/>.
+        /// </summary>
+        /// <typeparam name="T">The result type of the task.</typeparam>
+        /// <param name="task">The <see cref="Task{T}"/> to enqueue.</param>
+        /// <returns>A task that finishes once the queued task has run.</returns>
         public Task<T> Enqueue<T>(Func<Task<T>> task)
         {
             var tcs = new TaskCompletionSource<T>();
 
-            taskQueue.Enqueue(new GenericSequentialTask<T>(task, tcs));
+            this.taskQueue.Enqueue(new GenericSequentialTask<T>(task, tcs));
 
-            StartNext();
+            this.StartNext();
 
             return tcs.Task;
         }
 
+        /// <summary>
+        /// Starts the task that's next in queue. Does nothing if there are no tasks to run.
+        /// </summary>
         private void StartNext()
         {
-            if (currentTask != null) return;
-            if (!taskQueue.TryDequeue(out SequentialTask? item)) return;
+            if (this.currentTask != null) return;
+            if (!this.taskQueue.TryDequeue(out SequentialTask? item)) return;
 
-            currentTask = item.Run().ContinueWith((task, state) =>
+            this.currentTask = item.Run().ContinueWith(
+                (task, state) =>
             {
-                currentTask = null;
-                StartNext();
+                this.currentTask = null;
+                this.StartNext();
             }, TaskContinuationOptions.None);
         }
 
         private abstract class SequentialTask
         {
-            private Func<Task> func;
+            private readonly Func<Task> func;
 
             protected SequentialTask(Func<Task> func)
             {
@@ -55,79 +73,84 @@ namespace ActionCableSharp.Internal
 
             public Task Run()
             {
-                Task task = func();
+                Task task = this.func();
 
-                task.ContinueWith((task, state) =>
+                task.ContinueWith(
+                    (task, state) =>
                 {
                     if (task.IsCompletedSuccessfully)
                     {
-                        SetResult(task);
+                        this.SetResult(task);
                     }
                     else if (task.IsFaulted)
                     {
-                        SetException(task.Exception!.InnerExceptions);
+                        this.SetException(task.Exception!.InnerExceptions);
                     }
                     else if (task.IsCanceled)
                     {
-                        SetCanceled();
+                        this.SetCanceled();
                     }
                 }, TaskContinuationOptions.None);
 
                 return task;
             }
 
-            public abstract void SetResult(Task task);
-            public abstract void SetCanceled();
-            public abstract void SetException(IEnumerable<Exception> exception);
+            protected abstract void SetResult(Task task);
+
+            protected abstract void SetCanceled();
+
+            protected abstract void SetException(IEnumerable<Exception> exception);
         }
 
         private class VoidSequentialTask : SequentialTask
         {
-            private TaskCompletionSource taskCompletionSource;
+            private readonly TaskCompletionSource taskCompletionSource;
 
-            public VoidSequentialTask(Func<Task> func, TaskCompletionSource taskCompletionSource) : base(func)
+            public VoidSequentialTask(Func<Task> func, TaskCompletionSource taskCompletionSource)
+                : base(func)
             {
                 this.taskCompletionSource = taskCompletionSource;
             }
 
-            public override void SetResult(Task task)
+            protected override void SetResult(Task task)
             {
-                taskCompletionSource.SetResult();
+                this.taskCompletionSource.SetResult();
             }
 
-            public override void SetCanceled()
+            protected override void SetCanceled()
             {
-                taskCompletionSource.SetCanceled();
+                this.taskCompletionSource.SetCanceled();
             }
 
-            public override void SetException(IEnumerable<Exception> exception)
+            protected override void SetException(IEnumerable<Exception> exception)
             {
-                taskCompletionSource.SetException(exception);
+                this.taskCompletionSource.SetException(exception);
             }
         }
 
         private class GenericSequentialTask<T> : SequentialTask
         {
-            private TaskCompletionSource<T> taskCompletionSource;
+            private readonly TaskCompletionSource<T> taskCompletionSource;
 
-            public GenericSequentialTask(Func<Task<T>> func, TaskCompletionSource<T> taskCompletionSource) : base(func)
+            public GenericSequentialTask(Func<Task<T>> func, TaskCompletionSource<T> taskCompletionSource)
+                : base(func)
             {
                 this.taskCompletionSource = taskCompletionSource;
             }
 
-            public override void SetResult(Task task)
+            protected override void SetResult(Task task)
             {
-                taskCompletionSource.SetResult(((Task<T>)task).Result);
+                this.taskCompletionSource.SetResult(((Task<T>)task).Result);
             }
 
-            public override void SetCanceled()
+            protected override void SetCanceled()
             {
-                taskCompletionSource.SetCanceled();
+                this.taskCompletionSource.SetCanceled();
             }
 
-            public override void SetException(IEnumerable<Exception> exception)
+            protected override void SetException(IEnumerable<Exception> exception)
             {
-                taskCompletionSource.SetException(exception);
+                this.taskCompletionSource.SetException(exception);
             }
         }
     }

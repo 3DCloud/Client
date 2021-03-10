@@ -1,7 +1,7 @@
-﻿using ActionCableSharp.Internal;
-using System;
+﻿using System;
 using System.Threading;
 using System.Threading.Tasks;
+using ActionCableSharp.Internal;
 using Xunit;
 
 namespace ActionCableSharp.Tests

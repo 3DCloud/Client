@@ -1,18 +1,33 @@
-﻿using ActionCableSharp;
-using System;
+﻿using System;
 using System.Collections.Generic;
+using ActionCableSharp;
 
 namespace Client
 {
+    /// <summary>
+    /// A message containing the states of all the printers connected to a client.
+    /// </summary>
     internal class PrinterStateMessage : ActionMessage
     {
-        public Dictionary<string, PrinterState> PrinterStates { get; }
-        public long Timestamp { get; }
-
-        public PrinterStateMessage(Dictionary<string, PrinterState> printerStates) : base("printer_state")
+        /// <summary>
+        /// Initializes a new instance of the <see cref="PrinterStateMessage"/> class.
+        /// </summary>
+        /// <param name="printerStates">The states of the printers connected to the client.</param>
+        public PrinterStateMessage(Dictionary<string, PrinterState> printerStates)
+            : base("printer_state")
         {
-            PrinterStates = printerStates;
-            Timestamp = DateTimeOffset.UtcNow.ToUnixTimeMilliseconds();
+            this.PrinterStates = printerStates;
+            this.Timestamp = DateTimeOffset.UtcNow.ToUnixTimeMilliseconds();
         }
+
+        /// <summary>
+        /// Gets the states of the printers connected to the client.
+        /// </summary>
+        public Dictionary<string, PrinterState> PrinterStates { get; }
+
+        /// <summary>
+        /// Gets the time at which the printer states were sampled.
+        /// </summary>
+        public long Timestamp { get; }
     }
 }

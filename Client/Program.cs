@@ -1,17 +1,20 @@
-﻿using ActionCableSharp;
-using Microsoft.Extensions.Logging;
-using System;
+﻿using System;
 using System.Collections.Generic;
 using System.Threading.Tasks;
+using ActionCableSharp;
+using Microsoft.Extensions.Logging;
 
 namespace Client
 {
-    class Program
+    /// <summary>
+    /// Contains the initial logic that runs the program.
+    /// </summary>
+    internal class Program
     {
+        private static readonly Random Random = new Random();
         private static ILogger<Program>? logger;
-        private static Random random = new Random();
 
-        static async Task Main(string[] args)
+        private static async Task Main(string[] args)
         {
             var loggerFactory = LoggerFactory.Create(builder =>
             {
@@ -39,7 +42,7 @@ namespace Client
                     await subscription.Perform(new PrinterStateMessage(new Dictionary<string, PrinterState> { { printer.Identifier, printer.GetState() } }));
                     await Task.Delay(500);
                 }
-                
+
                 await subscription.Unsubscribe();
                 await Task.Delay(5000);
             }
@@ -50,7 +53,7 @@ namespace Client
         private static string GetRandomBytes()
         {
             byte[] buffer = new byte[16];
-            random.NextBytes(buffer);
+            Random.NextBytes(buffer);
             return Convert.ToHexString(buffer);
         }
 

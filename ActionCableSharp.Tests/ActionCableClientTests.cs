@@ -1,11 +1,11 @@
-﻿using ActionCableSharp.Internal;
-using Client;
-using Moq;
-using System;
+﻿using System;
 using System.Net.WebSockets;
 using System.Text.Json;
 using System.Threading;
 using System.Threading.Tasks;
+using ActionCableSharp.Internal;
+using Client;
+using Moq;
 using Xunit;
 
 namespace ActionCableSharp.Tests
@@ -48,7 +48,11 @@ namespace ActionCableSharp.Tests
             mockWebSocket.Setup(ws => ws.SetRequestHeader(It.IsAny<string>(), It.IsAny<string?>()));
             mockWebSocket.SetupSequence(ws => ws.ConnectAsync(It.IsAny<Uri>(), It.IsAny<CancellationToken>()))
                 .ThrowsAsync(new WebSocketException())
-                .Returns(() => { connected = true; return Task.CompletedTask; });
+                .Returns(() =>
+                {
+                    connected = true;
+                    return Task.CompletedTask;
+                });
             mockWebSocket.SetupGet(ws => ws.IsConnected).Returns(() => connected);
 
             var mockWebSocketFactory = new Mock<IWebSocketFactory>();
@@ -79,12 +83,13 @@ namespace ActionCableSharp.Tests
             var client = new ActionCableClient(uri, "dummy", mockWebSocketFactory.Object);
             var identifier = new Identifier("channel_name");
 
-            ArraySegment<byte> bytes = JsonSerializer.SerializeToUtf8Bytes(new ActionCableOutgoingMessage
-            {
-                Command = "subscribe",
-                Identifier = JsonSerializer.Serialize(identifier, client.JsonSerializerOptions),
-                Data = null
-            }, client.JsonSerializerOptions);
+            ArraySegment<byte> bytes = JsonSerializer.SerializeToUtf8Bytes(
+                new ActionCableOutgoingMessage
+                {
+                    Command = "subscribe",
+                    Identifier = JsonSerializer.Serialize(identifier, client.JsonSerializerOptions),
+                    Data = null,
+                }, client.JsonSerializerOptions);
 
             // Act
             await client.ConnectAsync();
@@ -110,12 +115,14 @@ namespace ActionCableSharp.Tests
             var client = new ActionCableClient(uri, "dummy", mockWebSocketFactory.Object);
             var identifier = new Identifier("channel_name");
             var data = new SampleAction("test");
-            
-            ArraySegment<byte> bytes = JsonSerializer.SerializeToUtf8Bytes(new ActionCableOutgoingMessage {
-                Command = "message",
-                Identifier = JsonSerializer.Serialize(identifier, client.JsonSerializerOptions),
-                Data = JsonSerializer.Serialize(data, client.JsonSerializerOptions)
-            }, client.JsonSerializerOptions);
+
+            ArraySegment<byte> bytes = JsonSerializer.SerializeToUtf8Bytes(
+                new ActionCableOutgoingMessage
+                {
+                    Command = "message",
+                    Identifier = JsonSerializer.Serialize(identifier, client.JsonSerializerOptions),
+                    Data = JsonSerializer.Serialize(data, client.JsonSerializerOptions),
+                }, client.JsonSerializerOptions);
 
             // Act
             await client.ConnectAsync();

@@ -4,10 +4,15 @@ using System.Text.Json;
 namespace ActionCableSharp
 {
     /// <summary>
-    /// <see cref="JsonNamingPolicy"/> that converts PascalCase to snake_case.
+    /// A <see cref="JsonNamingPolicy"/> that converts PascalCase/camelCase to snake_case.
     /// </summary>
     public class SnakeCaseNamingPolicy : JsonNamingPolicy
     {
+        /// <summary>
+        /// Converts a PascalCase/camelCase string to snake_case.
+        /// </summary>
+        /// <param name="name">The variable name to convert.</param>
+        /// <returns>The specified variable name but in snake_case.</returns>
         public override string ConvertName(string name)
         {
             var builder = new StringBuilder();

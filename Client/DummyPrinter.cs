@@ -3,53 +3,64 @@ using System.IO;
 
 namespace Client
 {
+    /// <summary>
+    /// An implementation of <see cref="IPrinter"/> that gives dummy data.
+    /// </summary>
     internal class DummyPrinter : IPrinter
     {
-        public string Identifier { get; } = Guid.NewGuid().ToString();
+        private readonly Random random = new Random();
 
         private bool connected;
         private bool printing;
-        private Random random = new Random();
 
+        /// <inheritdoc/>
+        public string Identifier { get; } = Guid.NewGuid().ToString();
+
+        /// <inheritdoc/>
         public void Connect()
         {
-            connected = true;
+            this.connected = true;
         }
 
+        /// <inheritdoc/>
         public void Disconnect()
         {
-            connected = false;
+            this.connected = false;
         }
 
+        /// <inheritdoc/>
         public void StartPrint(Stream fileStream)
         {
-            printing = true;
+            this.printing = true;
         }
 
+        /// <inheritdoc/>
         public void AbortPrint()
         {
-            printing = false;
+            this.printing = false;
         }
 
+        /// <inheritdoc/>
         public PrinterState GetState()
         {
             return new PrinterState
             {
-                IsConnected = connected,
-                IsPrinting = printing,
+                IsConnected = this.connected,
+                IsPrinting = this.printing,
                 HotendTemperatures = new[]
                 {
-                    210 + random.NextDouble() * 0.5,
-                    190 + random.NextDouble() * 0.5
+                    210 + this.random.NextDouble() * 0.5,
+                    190 + this.random.NextDouble() * 0.5,
                 },
-                BedTemperature = 60 + random.NextDouble() * 0.5
+                BedTemperature = 60 + this.random.NextDouble() * 0.5,
             };
         }
 
+        /// <inheritdoc/>
         public void Dispose()
         {
-            connected = false;
-            printing = false;
+            this.connected = false;
+            this.printing = false;
         }
     }
 }

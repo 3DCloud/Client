@@ -1,6 +1,4 @@
-﻿using ActionCableSharp.Internal;
-using Microsoft.Extensions.Logging;
-using System;
+﻿using System;
 using System.Collections.Generic;
 using System.IO;
 using System.Net.WebSockets;
@@ -8,6 +6,8 @@ using System.Text.Json;
 using System.Text.Json.Serialization;
 using System.Threading;
 using System.Threading.Tasks;
+using ActionCableSharp.Internal;
+using Microsoft.Extensions.Logging;
 
 namespace ActionCableSharp
 {
@@ -19,26 +19,6 @@ namespace ActionCableSharp
         private const int BufferSize = 8192;
         private static readonly int[] ReconnectDelays = new int[] { 1_000, 2_000, 5_000, 10_000, 15_000, 20_000, 30_000 };
 
-        /// <summary>
-        /// URI to Action Cable mount path.
-        /// </summary>
-        public Uri Uri { get; }
-
-        /// <summary>
-        /// Origin to use in the headers of requests. This should be in Action Cable's <code>allowed_request_origins</code> configuration option.
-        /// </summary>
-        public string Origin { get; }
-
-        /// <summary>
-        /// Options used by the JSON serializer that reads/writes messages to the WebSocket.
-        /// </summary>
-        public JsonSerializerOptions JsonSerializerOptions { get; }
-
-        /// <summary>
-        /// Current connection state of the client.
-        /// </summary>
-        public ClientState State { get; private set; }
-
         private readonly ILogger<ActionCableClient> logger;
         private readonly IWebSocketFactory webSocketFactory;
         private readonly List<ActionCableSubscription> subscriptions;
@@ -48,52 +28,89 @@ namespace ActionCableSharp
         private CancellationTokenSource? loopCancellationTokenSource;
 
         /// <summary>
-        /// Creates a new instance of the <see cref="ActionCableClient"/> class.
+        /// Initializes a new instance of the <see cref="ActionCableClient"/> class.
         /// </summary>
         /// <param name="uri">URI pointing to an Action Cable mount path.</param>
         /// <param name="origin">Origin to use in the headers of requests.</param>
-        public ActionCableClient(Uri uri, string origin) : this(uri, origin, new ClientWebSocketFactory()) { }
+        public ActionCableClient(Uri uri, string origin)
+            : this(uri, origin, new ClientWebSocketFactory())
+        {
+        }
 
+        /// <summary>
+        /// Initializes a new instance of the <see cref="ActionCableClient"/> class.
+        /// </summary>
+        /// <param name="uri">URI pointing to an Action Cable mount path.</param>
+        /// <param name="origin">Origin to use in the headers of requests.</param>
+        /// <param name="webSocketFactory">Factory to use when creating <see cref="IWebSocket"/> instances.</param>
         internal ActionCableClient(Uri uri, string origin, IWebSocketFactory webSocketFactory)
         {
-            Uri = uri;
-            Origin = origin;
-            State = ClientState.Disconnected;
+            this.Uri = uri;
+            this.Origin = origin;
+            this.State = ClientState.Disconnected;
 
             var namingPolicy = new SnakeCaseNamingPolicy();
 
-            JsonSerializerOptions = new JsonSerializerOptions
+            this.JsonSerializerOptions = new JsonSerializerOptions
             {
                 DefaultIgnoreCondition = JsonIgnoreCondition.WhenWritingNull,
                 DictionaryKeyPolicy = namingPolicy,
                 Converters =
                 {
-                    new JsonStringEnumMemberConverter(namingPolicy)
+                    new JsonStringEnumMemberConverter(namingPolicy),
                 },
-                PropertyNamingPolicy = namingPolicy
+                PropertyNamingPolicy = namingPolicy,
             };
 
-            logger = Logging.LoggerFactory.CreateLogger<ActionCableClient>();
+            this.logger = Logging.LoggerFactory.CreateLogger<ActionCableClient>();
             this.webSocketFactory = webSocketFactory;
-            subscriptions = new List<ActionCableSubscription>();
-            sendTaskRunner = new SequentialTaskRunner();
+            this.subscriptions = new List<ActionCableSubscription>();
+            this.sendTaskRunner = new SequentialTaskRunner();
         }
+
+        /// <summary>
+        /// Gets the URI to Action Cable mount path.
+        /// </summary>
+        public Uri Uri { get; }
+
+        /// <summary>
+        /// Gets the origin to use in the headers of requests. This should be in Action Cable's allowed_request_origins configuration option.
+        /// </summary>
+        public string Origin { get; }
+
+        /// <summary>
+        /// Gets the options used by the JSON serializer that reads/writes messages to the WebSocket.
+        /// </summary>
+        public JsonSerializerOptions JsonSerializerOptions { get; }
+
+        /// <summary>
+        /// Gets the current connection state of the client.
+        /// </summary>
+        public ClientState State { get; private set; }
 
         /// <summary>
         /// Initiates the WebSocket connection.
         /// </summary>
+        /// <returns>A <see cref="Task"/> that completes once the client is connected.</returns>
         public Task ConnectAsync()
         {
-            return ReconnectAsync(true);
+            return this.ReconnectAsync(true);
         }
 
+        /// <summary>
+        /// Closes the WebSocket connection.
+        /// </summary>
+        /// <returns>A <see cref="Task"/> that completes once the client is disconnected.</returns>
         public async Task DisconnectAsync()
         {
-            if (webSocket?.IsConnected != true) return;
+            if (this.webSocket?.IsConnected != true)
+            {
+                return;
+            }
 
-            await webSocket.CloseAsync(WebSocketCloseStatus.NormalClosure, "Closed by client", CancellationToken.None).ConfigureAwait(false);
+            await this.webSocket.CloseAsync(WebSocketCloseStatus.NormalClosure, "Closed by client", CancellationToken.None).ConfigureAwait(false);
 
-            State = ClientState.Disconnected;
+            this.State = ClientState.Disconnected;
         }
 
         /// <summary>
@@ -104,74 +121,87 @@ namespace ActionCableSharp
         public async Task<ActionCableSubscription> Subscribe(Identifier identifier)
         {
             var subscription = new ActionCableSubscription(this, identifier);
-            subscriptions.Add(subscription);
+            this.subscriptions.Add(subscription);
 
-            await EnqueueCommand("subscribe", identifier);
+            await this.EnqueueCommand("subscribe", identifier);
 
             return subscription;
         }
 
+        /// <inheritdoc/>
         public void Dispose()
         {
-            webSocket?.Dispose();
+            this.webSocket?.Dispose();
         }
 
+        /// <summary>
+        /// Enqueue a command to be sent to the server.
+        /// </summary>
+        /// <param name="command">Name of the command.</param>
+        /// <param name="identifier"><see cref="Identifier"/> to use.</param>
+        /// <param name="data">Optional additional data.</param>
+        /// <returns>A <see cref="Task"/> that completes once the message has been sent to the server.</returns>
         internal Task EnqueueCommand(string command, Identifier identifier, object? data = null)
         {
             var message = new ActionCableOutgoingMessage
             {
                 Command = command,
-                Identifier = JsonSerializer.Serialize(identifier, identifier.GetType(), JsonSerializerOptions),
-                Data = data != null ? JsonSerializer.Serialize(data, JsonSerializerOptions) : null
+                Identifier = JsonSerializer.Serialize(identifier, identifier.GetType(), this.JsonSerializerOptions),
+                Data = data != null ? JsonSerializer.Serialize(data, this.JsonSerializerOptions) : null,
             };
 
-            return sendTaskRunner.Enqueue(() => SendMessage(message, CancellationToken.None));
+            return this.sendTaskRunner.Enqueue(() => this.SendMessage(message, CancellationToken.None));
         }
 
+        /// <summary>
+        /// Unsubscribe from a given <see cref="ActionCableSubscription"/>.
+        /// </summary>
+        /// <param name="subscription"><see cref="ActionCableSubscription"/> from which to unsubscribe.</param>
+        /// <returns>A <see cref="Task"/> that completes once the unsubscription request has been sent to the server.</returns>
         internal async Task Unsubscribe(ActionCableSubscription subscription)
         {
-            await EnqueueCommand("unsubscribe", subscription.Identifier);
-            subscriptions.Remove(subscription);
+            await this.EnqueueCommand("unsubscribe", subscription.Identifier);
+            this.subscriptions.Remove(subscription);
         }
 
         private async Task ReconnectAsync(bool initial = false)
         {
             int reconnectDelayIndex = 0;
 
-            while (webSocket?.IsConnected != true)
+            while (this.webSocket?.IsConnected != true)
             {
-                webSocket?.Dispose();
-                webSocket = null;
+                this.webSocket?.Dispose();
+                this.webSocket = null;
 
-                loopCancellationTokenSource?.Cancel();
-                loopCancellationTokenSource = null;
+                this.loopCancellationTokenSource?.Cancel();
+                this.loopCancellationTokenSource = null;
 
-                State = initial ? ClientState.Pending : ClientState.Reconnecting;
+                this.State = initial ? ClientState.Pending : ClientState.Reconnecting;
 
                 try
                 {
-                    logger.LogInformation($"Connecting to {Uri}");
+                    this.logger.LogInformation($"Connecting to {this.Uri}");
 
-                    webSocket = webSocketFactory.CreateWebSocket();
-                    webSocket.SetRequestHeader("Origin", Origin);
-                    await webSocket.ConnectAsync(Uri, CancellationToken.None).ConfigureAwait(false);
+                    this.webSocket = this.webSocketFactory.CreateWebSocket();
+                    this.webSocket.SetRequestHeader("Origin", this.Origin);
+                    await this.webSocket.ConnectAsync(this.Uri, CancellationToken.None).ConfigureAwait(false);
 
-                    logger.LogInformation($"Connected to {Uri}");
+                    this.logger.LogInformation($"Connected to {this.Uri}");
 
-                    loopCancellationTokenSource = new CancellationTokenSource();
+                    this.loopCancellationTokenSource = new CancellationTokenSource();
 
                     // don't await these since they run until the connection is closed/interrupted
-                    _ = Task.Factory.StartNew(ReceiveLoop, TaskCreationOptions.LongRunning);
+                    _ = Task.Factory.StartNew(this.ReceiveLoop, TaskCreationOptions.LongRunning);
 
-                    foreach (var subscription in subscriptions)
+                    foreach (var subscription in this.subscriptions)
                     {
-                        _ = EnqueueCommand("subscribe", subscription.Identifier);
+                        _ = this.EnqueueCommand("subscribe", subscription.Identifier);
                     }
                 }
                 catch (WebSocketException)
                 {
                     int reconnectDelay = ReconnectDelays[reconnectDelayIndex];
-                    logger.LogError($"Failed to connect, waiting {reconnectDelay} ms before retrying...");
+                    this.logger.LogError($"Failed to connect, waiting {reconnectDelay} ms before retrying...");
                     await Task.Delay(reconnectDelay).ConfigureAwait(false);
                     reconnectDelayIndex = Math.Min(reconnectDelayIndex + 1, ReconnectDelays.Length - 1);
                 }
@@ -180,11 +210,14 @@ namespace ActionCableSharp
 
         private async Task SendMessage(ActionCableOutgoingMessage message, CancellationToken cancellationToken)
         {
-            if (webSocket == null) throw new InvalidOperationException("WebSocket has not been initialized");
+            if (this.webSocket == null)
+            {
+                throw new InvalidOperationException("WebSocket has not been initialized");
+            }
 
             using var stream = new MemoryStream();
 
-            await JsonSerializer.SerializeAsync(stream, message, JsonSerializerOptions, cancellationToken).ConfigureAwait(false);
+            await JsonSerializer.SerializeAsync(stream, message, this.JsonSerializerOptions, cancellationToken).ConfigureAwait(false);
 
             stream.Position = 0;
 
@@ -193,17 +226,17 @@ namespace ActionCableSharp
 
             while ((bytesRead = await stream.ReadAsync(buffer, cancellationToken)) > 0)
             {
-                await webSocket.SendAsync(new ArraySegment<byte>(buffer, 0, bytesRead), WebSocketMessageType.Text, stream.Position >= stream.Length - 1, cancellationToken).ConfigureAwait(false);
+                await this.webSocket.SendAsync(new ArraySegment<byte>(buffer, 0, bytesRead), WebSocketMessageType.Text, stream.Position >= stream.Length - 1, cancellationToken).ConfigureAwait(false);
             }
         }
 
         private async Task ReceiveLoop()
         {
-            logger.LogInformation($"Started incoming message task");
+            this.logger.LogInformation($"Started incoming message task");
 
             try
             {
-                while (loopCancellationTokenSource?.IsCancellationRequested == false && webSocket?.IsConnected == true)
+                while (this.loopCancellationTokenSource?.IsCancellationRequested == false && this.webSocket?.IsConnected == true)
                 {
                     using var stream = new MemoryStream();
                     var buffer = new byte[BufferSize];
@@ -211,7 +244,7 @@ namespace ActionCableSharp
 
                     do
                     {
-                        result = await webSocket.ReceiveAsync(buffer, loopCancellationTokenSource.Token).ConfigureAwait(false);
+                        result = await this.webSocket.ReceiveAsync(buffer, this.loopCancellationTokenSource.Token).ConfigureAwait(false);
                         stream.Write(new ArraySegment<byte>(buffer, 0, result.Count));
                     }
                     while (!result.EndOfMessage);
@@ -223,53 +256,58 @@ namespace ActionCableSharp
                         case WebSocketMessageType.Text:
                             try
                             {
-                                _ = ProcessMessage(stream);
+                                _ = this.ProcessMessage(stream);
                             }
                             catch (JsonException ex)
                             {
-                                logger.LogError("Failed to process message: " + ex);
+                                this.logger.LogError("Failed to process message: " + ex);
                             }
 
                             break;
 
                         case WebSocketMessageType.Close:
-                            logger.LogInformation("Connection closed by remote host");
+                            this.logger.LogInformation("Connection closed by remote host");
                             break;
 
                         default:
-                            logger.LogWarning("Unexpected message type " + result.MessageType);
+                            this.logger.LogWarning("Unexpected message type " + result.MessageType);
                             break;
                     }
                 }
             }
-            catch (TaskCanceledException) { }
+            catch (TaskCanceledException)
+            {
+            }
             catch (WebSocketException ex)
             {
-                await HandleWebSocketException(ex, "Failed to receive message").ConfigureAwait(false);
+                await this.HandleWebSocketException(ex, "Failed to receive message").ConfigureAwait(false);
             }
             catch (Exception ex)
             {
-                logger.LogError(ex.Message);
-                logger.LogError(ex.StackTrace);
+                this.logger.LogError(ex.Message);
+                this.logger.LogError(ex.StackTrace);
             }
 
-            logger.LogInformation($"Incoming message task ended");
+            this.logger.LogInformation($"Incoming message task ended");
         }
 
         private async Task ProcessMessage(Stream stream)
         {
-            ActionCableIncomingMessage? message = await JsonSerializer.DeserializeAsync<ActionCableIncomingMessage>(stream, JsonSerializerOptions);
+            ActionCableIncomingMessage? message = await JsonSerializer.DeserializeAsync<ActionCableIncomingMessage>(stream, this.JsonSerializerOptions);
 
-            if (!message.HasValue) return;
+            if (!message.HasValue)
+            {
+                return;
+            }
 
             switch (message.Value.Type)
             {
                 case MessageType.Welcome:
-                    State = ClientState.Connected;
+                    this.State = ClientState.Connected;
                     break;
 
                 case MessageType.Disconnect:
-                    State = ClientState.Disconnected;
+                    this.State = ClientState.Disconnected;
                     break;
 
                 case MessageType.Ping:
@@ -278,7 +316,7 @@ namespace ActionCableSharp
                 case MessageType.Confirmation:
                 case MessageType.Rejection:
                 case MessageType.None:
-                    foreach (var subscription in subscriptions)
+                    foreach (var subscription in this.subscriptions)
                     {
                         subscription.HandleMessage(message.Value);
                     }
@@ -289,10 +327,10 @@ namespace ActionCableSharp
 
         private async Task HandleWebSocketException(WebSocketException exception, string message)
         {
-            logger.LogError(exception, message);
-            loopCancellationTokenSource?.Cancel();
-            State = ClientState.Reconnecting;
-            await ReconnectAsync().ConfigureAwait(false);
+            this.logger.LogError(exception, message);
+            this.loopCancellationTokenSource?.Cancel();
+            this.State = ClientState.Reconnecting;
+            await this.ReconnectAsync().ConfigureAwait(false);
         }
     }
 }

@@ -1,0 +1,15 @@
+﻿[*.{cs,vb}]
+
+dotnet_style_qualification_for_event = false:silent
+dotnet_style_qualification_for_field = false:silent
+dotnet_style_qualification_for_method = false:silent
+dotnet_style_qualification_for_property = false:silent
+
+# SA1633: File should have header
+dotnet_diagnostic.SA1633.severity = none
+
+# SA1503: Braces should not be omitted
+dotnet_diagnostic.SA1503.severity = none
+
+# SA1407: Arithmetic expressions should declare precedence
+dotnet_diagnostic.SA1407.severity = none

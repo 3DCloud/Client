@@ -1,57 +1,91 @@
-﻿using ActionCableSharp.Internal;
-using System;
+﻿using System;
 using System.Text.Json;
 using System.Threading.Tasks;
+using ActionCableSharp.Internal;
 
 namespace ActionCableSharp
 {
+    /// <summary>
+    /// Encapsulates a subscription created when subscribing to a channel through an <see cref="ActionCableClient"/> instance.
+    /// </summary>
     public class ActionCableSubscription
     {
-        public Identifier Identifier { get; }
-        public SubscriptionState State { get; set; }
-
-        public Action<ActionCableMessage>? MessageReceived;
-
         private readonly ActionCableClient client;
 
+        /// <summary>
+        /// Initializes a new instance of the <see cref="ActionCableSubscription"/> class.
+        /// </summary>
+        /// <param name="client">The <see cref="ActionCableClient"/> instance to which this subscription belongs.</param>
+        /// <param name="identifier">The <see cref="Identifier"/> used to identifiy this subscription when communicating with the server.</param>
         internal ActionCableSubscription(ActionCableClient client, Identifier identifier)
         {
-            Identifier = identifier;
-            State = SubscriptionState.Pending;
+            this.Identifier = identifier;
+            this.State = SubscriptionState.Pending;
 
             this.client = client;
         }
 
+        /// <summary>
+        /// Triggered when a message for this subscription is received.
+        /// </summary>
+        public event Action<ActionCableMessage>? MessageReceived;
+
+        /// <summary>
+        /// Gets the <see cref="Identifier"/> used to identifiy this subscription when communicating with the server.
+        /// </summary>
+        public Identifier Identifier { get; }
+
+        /// <summary>
+        /// Gets the subscription's current state.
+        /// </summary>
+        public SubscriptionState State { get; private set; }
+
+        /// <summary>
+        /// Perform an action on the server.
+        /// </summary>
+        /// <param name="data"><see cref="ActionMessage"/> that contains the method name and optional data.</param>
+        /// <returns>A <see cref="Task"/> that completes once the message has been sent.</returns>
         public Task Perform(ActionMessage data)
         {
-            return client.EnqueueCommand("message", Identifier, data);
+            return this.client.EnqueueCommand("message", this.Identifier, data);
         }
 
+        /// <summary>
+        /// Unsubscribe from this subscription on the server.
+        /// </summary>
+        /// <returns>A <see cref="Task"/> that completes once the unsubscription request has been sent to the server.</returns>
         public async Task Unsubscribe()
         {
-            await client.Unsubscribe(this);
+            await this.client.Unsubscribe(this);
 
-            State = SubscriptionState.Unsubscribed;
+            this.State = SubscriptionState.Unsubscribed;
         }
 
+        /// <summary>
+        /// Handle a message received by the client.
+        /// </summary>
+        /// <param name="message">Received message.</param>
         internal void HandleMessage(ActionCableIncomingMessage message)
         {
-            Identifier? identifier = (Identifier?)JsonSerializer.Deserialize(message.Identifier, Identifier.GetType(), client.JsonSerializerOptions);
+            Identifier? identifier = (Identifier?)JsonSerializer.Deserialize(message.Identifier, this.Identifier.GetType(), this.client.JsonSerializerOptions);
 
-            if (!Identifier.Equals(identifier)) return;
-            
+            if (!this.Identifier.Equals(identifier))
+            {
+                return;
+            }
+
             switch (message.Type)
             {
                 case MessageType.Confirmation:
-                    State = SubscriptionState.Subscribed;
+                    this.State = SubscriptionState.Subscribed;
                     break;
 
                 case MessageType.Rejection:
-                    State = SubscriptionState.Rejected;
+                    this.State = SubscriptionState.Rejected;
                     break;
 
                 default:
-                    MessageReceived?.Invoke(new ActionCableMessage(message.Message, client.JsonSerializerOptions));
+                    this.MessageReceived?.Invoke(new ActionCableMessage(message.Message, this.client.JsonSerializerOptions));
                     break;
             }
         }

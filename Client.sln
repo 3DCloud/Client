@@ -7,7 +7,13 @@ Project("{9A19103F-16F7-4668-BE54-9A1E7A4F7556}") = "Client", "Client\Client.csp
 EndProject
 Project("{9A19103F-16F7-4668-BE54-9A1E7A4F7556}") = "ActionCableSharp", "ActionCableSharp\ActionCableSharp.csproj", "{034AAA90-8BD8-4EED-AACD-66546FFEE7D1}"
 EndProject
-Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "ActionCableSharp.Tests", "ActionCableSharp.Tests\ActionCableSharp.Tests.csproj", "{EE3A5F6F-C765-4D04-AFE1-954B5CC16671}"
+Project("{9A19103F-16F7-4668-BE54-9A1E7A4F7556}") = "ActionCableSharp.Tests", "ActionCableSharp.Tests\ActionCableSharp.Tests.csproj", "{EE3A5F6F-C765-4D04-AFE1-954B5CC16671}"
+EndProject
+Project("{2150E333-8FDC-42A3-9474-1A3956D46DE8}") = "Solution Items", "Solution Items", "{35A902B3-3DA2-48AA-8C62-2F4E796FFFFE}"
+	ProjectSection(SolutionItems) = preProject
+		.editorconfig = .editorconfig
+		stylecop.json = stylecop.json
+	EndProjectSection
 EndProject
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution
