@@ -2,7 +2,7 @@
 using System.Collections.Generic;
 using ActionCableSharp;
 
-namespace Client
+namespace Print3DCloud.Client
 {
     /// <summary>
     /// A message containing the states of all the printers connected to a client.

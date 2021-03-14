@@ -1,6 +1,6 @@
 ﻿using ActionCableSharp;
 
-namespace Client
+namespace ActionCableSharp.Tests
 {
     internal class SampleAction : ActionMessage
     {

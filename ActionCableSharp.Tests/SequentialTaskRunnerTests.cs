@@ -2,6 +2,7 @@
 using System.Threading;
 using System.Threading.Tasks;
 using ActionCableSharp.Internal;
+using Print3DCloud.Tasks;
 using Xunit;
 
 namespace ActionCableSharp.Tests

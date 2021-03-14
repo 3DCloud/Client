@@ -1,7 +1,7 @@
 ﻿using System;
 using ActionCableSharp;
 
-namespace Client
+namespace Print3DCloud.Client
 {
     /// <summary>
     /// Identifies a 3DCloud client.

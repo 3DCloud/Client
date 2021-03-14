@@ -3,12 +3,12 @@ using System.Collections.Concurrent;
 using System.Collections.Generic;
 using System.Threading.Tasks;
 
-namespace ActionCableSharp.Internal
+namespace Print3DCloud.Tasks
 {
     /// <summary>
     /// Queues tasks and runs them one by one sequentially.
     /// </summary>
-    internal class SequentialTaskRunner
+    public class SequentialTaskRunner
     {
         private readonly ConcurrentQueue<SequentialTask> taskQueue = new ConcurrentQueue<SequentialTask>();
         private Task? currentTask;

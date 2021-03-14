@@ -1,7 +1,7 @@
 ﻿using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Logging.Abstractions;
 
-namespace Client
+namespace Print3DCloud.Client
 {
     /// <summary>
     /// Contains properties related to the logging behavior of this assembly.

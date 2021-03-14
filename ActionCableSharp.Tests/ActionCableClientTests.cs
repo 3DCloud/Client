@@ -4,7 +4,6 @@ using System.Text.Json;
 using System.Threading;
 using System.Threading.Tasks;
 using ActionCableSharp.Internal;
-using Client;
 using Moq;
 using Xunit;
 

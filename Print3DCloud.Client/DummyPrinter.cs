@@ -1,7 +1,9 @@
 ﻿using System;
 using System.IO;
+using System.Threading;
+using System.Threading.Tasks;
 
-namespace Client
+namespace Print3DCloud.Client
 {
     /// <summary>
     /// An implementation of <see cref="IPrinter"/> that gives dummy data.
@@ -17,27 +19,37 @@ namespace Client
         public string Identifier { get; } = Guid.NewGuid().ToString();
 
         /// <inheritdoc/>
-        public void Connect()
+        public Task ConnectAsync(CancellationToken cancellationToken)
         {
             this.connected = true;
+            return Task.CompletedTask;
         }
 
         /// <inheritdoc/>
-        public void Disconnect()
+        public Task DisconnectAsync(CancellationToken cancellationToken)
         {
             this.connected = false;
+            return Task.CompletedTask;
         }
 
         /// <inheritdoc/>
-        public void StartPrint(Stream fileStream)
+        public Task SendCommandAsync(string command)
+        {
+            return Task.CompletedTask;
+        }
+
+        /// <inheritdoc/>
+        public Task StartPrintAsync(Stream fileStream)
         {
             this.printing = true;
+            return Task.CompletedTask;
         }
 
         /// <inheritdoc/>
-        public void AbortPrint()
+        public Task AbortPrintAsync()
         {
             this.printing = false;
+            return Task.CompletedTask;
         }
 
         /// <inheritdoc/>

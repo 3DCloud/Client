@@ -8,6 +8,7 @@ using System.Threading;
 using System.Threading.Tasks;
 using ActionCableSharp.Internal;
 using Microsoft.Extensions.Logging;
+using Print3DCloud.Tasks;
 
 namespace ActionCableSharp
 {

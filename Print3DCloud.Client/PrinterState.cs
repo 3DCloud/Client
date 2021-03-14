@@ -1,4 +1,4 @@
-﻿namespace Client
+﻿namespace Print3DCloud.Client
 {
     /// <summary>
     /// Represents the state of a printer at a given moment.
@@ -24,5 +24,11 @@
         /// Gets the temperature of the bed. Set to null if the printer does not have a heated build plate.
         /// </summary>
         public double? BedTemperature { get; init; }
+
+        /// <inheritdoc/>
+        public override string ToString()
+        {
+            return $"{{ IsConnected = {this.IsConnected}, IsPrinting = {this.IsPrinting}, HotendTemperatures = [{string.Join(", ", this.HotendTemperatures)}], BedTemperature = {this.BedTemperature?.ToString() ?? "null"} }}";
+        }
     }
 }

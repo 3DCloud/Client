@@ -1,4 +1,4 @@
-﻿namespace Client
+﻿namespace Print3DCloud.Client
 {
     /// <summary>
     /// A sample message.

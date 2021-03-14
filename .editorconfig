@@ -13,3 +13,5 @@ dotnet_diagnostic.SA1503.severity = none
 
 # SA1407: Arithmetic expressions should declare precedence
 dotnet_diagnostic.SA1407.severity = none
+
+dotnet_diagnostic.IDE0003.severity = none
