@@ -48,16 +48,75 @@ namespace Print3DCloud.Tasks.Tests
         }
 
         [Fact]
+        public async Task Enqueue_CanceledGenericTask_RunsAndThrowsException()
+        {
+            // Arrange
+            var taskRunner = new SequentialTaskRunner();
+            var cancellationTokenSource = new CancellationTokenSource();
+
+            cancellationTokenSource.CancelAfter(100);
+
+            // Act
+            await Assert.ThrowsAsync<TaskCanceledException>(() => taskRunner.Enqueue(async () =>
+            {
+                await Task.Delay(500, cancellationTokenSource.Token);
+                return 10;
+            }));
+        }
+
+        [Fact]
+        public async Task Enqueue_TaskCanceledBeforeRunning_IsCanceledAndDoesNotRun()
+        {
+            // Arrange
+            var taskRunner = new SequentialTaskRunner();
+            var cancellationTokenSource = new CancellationTokenSource();
+
+            cancellationTokenSource.CancelAfter(100);
+
+            _ = taskRunner.Enqueue(() => Task.Delay(Timeout.Infinite, cancellationTokenSource.Token));
+
+            // Act
+            await Assert.ThrowsAsync<TaskCanceledException>(() => taskRunner.Enqueue(() => Task.FromException(new Exception("If this is thrown, the task has run when it shouldn't have")), cancellationTokenSource.Token));
+        }
+
+        [Fact]
+        public async Task Enqueue_GenericTaskCanceledBeforeRunning_IsCanceledAndDoesNotRun()
+        {
+            // Arrange
+            var taskRunner = new SequentialTaskRunner();
+            var cancellationTokenSource = new CancellationTokenSource();
+
+            cancellationTokenSource.CancelAfter(100);
+
+            _ = taskRunner.Enqueue(() => Task.Delay(Timeout.Infinite, cancellationTokenSource.Token));
+
+            // Act
+            await Assert.ThrowsAsync<TaskCanceledException>(() => taskRunner.Enqueue(() => Task.FromException<int>(new Exception("If this is thrown, the task has run when it shouldn't have")), cancellationTokenSource.Token));
+        }
+
+        [Fact]
         public async Task Enqueue_TaskWithException_RunsAndThrowsException()
         {
             // Arrange
             var taskRunner = new SequentialTaskRunner();
 
             // Act
-            await Assert.ThrowsAsync<InvalidOperationException>(() => taskRunner.Enqueue(async () =>
+            await Assert.ThrowsAsync<InvalidOperationException>(() => taskRunner.Enqueue(() =>
             {
-                await Task.Delay(100);
-                throw new InvalidOperationException();
+                return Task.FromException(new InvalidOperationException());
+            }));
+        }
+
+        [Fact]
+        public async Task Enqueue_GenericTaskWithException_RunsAndThrowsException()
+        {
+            // Arrange
+            var taskRunner = new SequentialTaskRunner();
+
+            // Act
+            await Assert.ThrowsAsync<InvalidOperationException>(() => taskRunner.Enqueue(() =>
+            {
+                return Task.FromException<int>(new InvalidOperationException());
             }));
         }
     }

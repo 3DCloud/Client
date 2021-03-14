@@ -1,6 +1,7 @@
 ﻿using System;
 using System.Collections.Concurrent;
 using System.Collections.Generic;
+using System.Threading;
 using System.Threading.Tasks;
 
 namespace Print3DCloud.Tasks
@@ -17,10 +18,16 @@ namespace Print3DCloud.Tasks
         /// Enqueue a <see cref="Task"/>.
         /// </summary>
         /// <param name="task">The <see cref="Task"/> to enqueue.</param>
+        /// <param name="cancellationToken">A <see cref="CancellationToken"/> used to propagate notification that the operation should be canceled.</param>
         /// <returns>A task that finishes once the queued task has run.</returns>
-        public Task Enqueue(Func<Task> task)
+        public Task Enqueue(Func<Task> task, CancellationToken cancellationToken = default)
         {
             var tcs = new TaskCompletionSource();
+
+            if (cancellationToken.CanBeCanceled)
+            {
+                cancellationToken.Register(() => tcs.TrySetCanceled(cancellationToken));
+            }
 
             this.taskQueue.Enqueue(new VoidSequentialTask(task, tcs));
 
@@ -34,10 +41,16 @@ namespace Print3DCloud.Tasks
         /// </summary>
         /// <typeparam name="T">The result type of the task.</typeparam>
         /// <param name="task">The <see cref="Task{T}"/> to enqueue.</param>
+        /// <param name="cancellationToken">A <see cref="CancellationToken"/> used to propagate notification that the operation should be canceled.</param>
         /// <returns>A task that finishes once the queued task has run.</returns>
-        public Task<T> Enqueue<T>(Func<Task<T>> task)
+        public Task<T> Enqueue<T>(Func<Task<T>> task, CancellationToken cancellationToken = default)
         {
             var tcs = new TaskCompletionSource<T>();
+
+            if (cancellationToken.CanBeCanceled)
+            {
+                cancellationToken.Register(() => tcs.TrySetCanceled(cancellationToken));
+            }
 
             this.taskQueue.Enqueue(new GenericSequentialTask<T>(task, tcs));
 
