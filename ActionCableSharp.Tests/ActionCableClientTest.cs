@@ -9,7 +9,7 @@ using Xunit;
 
 namespace ActionCableSharp.Tests
 {
-    public class ActionCableClientTests
+    public class ActionCableClientTest
     {
         [Fact]
         public async Task ConnectAsync_HostAvailableImmediately_ConnectsSuccessfully()
@@ -113,7 +113,7 @@ namespace ActionCableSharp.Tests
 
             var client = new ActionCableClient(uri, "dummy", mockWebSocketFactory.Object);
             var identifier = new Identifier("channel_name");
-            var data = new SampleAction("test");
+            var data = new SampleMessage("test");
 
             ArraySegment<byte> bytes = JsonSerializer.SerializeToUtf8Bytes(
                 new ActionCableOutgoingMessage
@@ -150,7 +150,7 @@ namespace ActionCableSharp.Tests
             // Act
             await client.ConnectAsync();
             ActionCableSubscription subscription = await client.Subscribe(new Identifier("channel_name"));
-            await subscription.Perform(new SampleAction(new string('a', 10_000)));
+            await subscription.Perform(new SampleMessage(new string('a', 10_000)));
 
             // Assert
             Assert.Equal("channel_name", subscription.Identifier.ChannelName);

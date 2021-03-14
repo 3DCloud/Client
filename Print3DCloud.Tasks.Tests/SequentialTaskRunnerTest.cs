@@ -5,7 +5,7 @@ using Xunit;
 
 namespace Print3DCloud.Tasks.Tests
 {
-    public class SequentialTaskRunnerTests
+    public class SequentialTaskRunnerTest
     {
         [Fact]
         public async Task Enqueue_Task_Runs()
