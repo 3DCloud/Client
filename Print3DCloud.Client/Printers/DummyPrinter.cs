@@ -3,7 +3,7 @@ using System.IO;
 using System.Threading;
 using System.Threading.Tasks;
 
-namespace Print3DCloud.Client
+namespace Print3DCloud.Client.Printers
 {
     /// <summary>
     /// An implementation of <see cref="IPrinter"/> that gives dummy data.

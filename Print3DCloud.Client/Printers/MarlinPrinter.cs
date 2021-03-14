@@ -10,7 +10,7 @@ using System.Threading.Tasks;
 using Microsoft.Extensions.Logging;
 using Print3DCloud.Tasks;
 
-namespace Print3DCloud.Client
+namespace Print3DCloud.Client.Printers
 {
     /// <summary>
     /// Printer driver for printers using Marlin (or derived) firmware that send G-code via serial.

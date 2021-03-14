@@ -1,4 +1,4 @@
-﻿namespace Print3DCloud.Client
+﻿namespace Print3DCloud.Client.Printers
 {
     /// <summary>
     /// Represents the state of a printer at a given moment.

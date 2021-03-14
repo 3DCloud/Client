@@ -5,6 +5,8 @@ using System.Threading;
 using System.Threading.Tasks;
 using ActionCableSharp;
 using Microsoft.Extensions.Logging;
+using Print3DCloud.Client.ActionCable;
+using Print3DCloud.Client.Printers;
 
 namespace Print3DCloud.Client
 {

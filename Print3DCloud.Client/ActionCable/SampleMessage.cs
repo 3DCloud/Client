@@ -1,4 +1,4 @@
-﻿namespace Print3DCloud.Client
+﻿namespace Print3DCloud.Client.ActionCable
 {
     /// <summary>
     /// A sample message.
