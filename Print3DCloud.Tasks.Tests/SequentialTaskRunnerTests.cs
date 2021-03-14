@@ -1,11 +1,9 @@
 ﻿using System;
 using System.Threading;
 using System.Threading.Tasks;
-using ActionCableSharp.Internal;
-using Print3DCloud.Tasks;
 using Xunit;
 
-namespace ActionCableSharp.Tests
+namespace Print3DCloud.Tasks.Tests
 {
     public class SequentialTaskRunnerTests
     {
