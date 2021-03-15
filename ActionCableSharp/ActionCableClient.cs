@@ -262,11 +262,11 @@ namespace ActionCableSharp
                     // don't await these since they run until the connection is closed/interrupted
                     _ = Task.Factory.StartNew(this.ReceiveLoop, TaskCreationOptions.LongRunning);
 
-                    await this.subscriptions.ForEachAsync(
-                        (subscription, ct) =>
+                    // these run sequentially so might as well await each one individually
+                    foreach (var subscription in this.subscriptions)
                     {
-                        return this.EnqueueCommand("subscribe", subscription.Identifier, ct);
-                    }, cancellationToken);
+                        await this.EnqueueCommand("subscribe", subscription.Identifier, cancellationToken);
+                    }
                 }
                 catch (WebSocketException)
                 {
