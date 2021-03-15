@@ -41,7 +41,7 @@ namespace Print3DCloud.Client.Printers
         /// </summary>
         /// <param name="fileStream">The <see cref="Stream"/> containing the file.</param>
         /// <returns>A <see cref="Task"/> that completes once the print has been started.</returns>
-        Task StartPrintAsync(Stream fileStream);
+        Task StartPrintAsync(Stream fileStream, CancellationToken cancellationToken);
 
         /// <summary>
         /// Aborts the currently running print.

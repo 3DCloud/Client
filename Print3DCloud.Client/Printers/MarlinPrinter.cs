@@ -22,6 +22,7 @@ namespace Print3DCloud.Client.Printers
         private const string CommandExpectedResponse = "ok";
         private const string ReportTemperaturesCommand = "M105";
 
+        private static readonly Regex CommentRegex = new Regex(@"\(.*?\)|;.*$");
         private static readonly Regex IsTemperatureLineRegex = new Regex(@"T:[\d\.]+ \/[\d\.]+ (?:(?:B|T\d|@\d):[\d\.]+ \/[\d\.]+ ?)+");
         private static readonly Regex TemperaturesRegex = new Regex(@"(?<sensor>B|T\d?):(?<current>[\d\.]+) \/(?<target>[\d\.]+)");
 
@@ -32,6 +33,9 @@ namespace Print3DCloud.Client.Printers
         private CancellationTokenSource? cancellationTokenSource;
         private StreamReader? reader;
         private StreamWriter? writer;
+
+        private long currentLineNumber;
+        private bool resendLastCommand;
         private bool sendNextCommand;
 
         private TemperatureSensor activeHotendTemperature;
@@ -70,6 +74,8 @@ namespace Print3DCloud.Client.Printers
         /// <inheritdoc/>
         public async Task ConnectAsync(CancellationToken cancellationToken)
         {
+            this.logger.LogInformation($"Connecting to Marlin printer at port '{this.serialPort.PortName}'...");
+
             this.serialPort.Open();
 
             this.cancellationTokenSource = new CancellationTokenSource();
@@ -93,7 +99,7 @@ namespace Print3DCloud.Client.Printers
                 line = await this.reader.ReadLineAsync();
             }
 
-            this.logger.LogInformation($"Connected to printer at {this.serialPort.PortName}");
+            this.logger.LogInformation($"Connected");
 
             this.sendNextCommand = true;
 
@@ -129,12 +135,14 @@ namespace Print3DCloud.Client.Printers
         }
 
         /// <inheritdoc/>
-        public async Task StartPrintAsync(Stream fileStream)
+        public async Task StartPrintAsync(Stream fileStream, CancellationToken cancellationToken)
         {
-            var reader = new StreamReader(fileStream);
+            using var reader = new StreamReader(fileStream);
 
             while (!reader.EndOfStream)
             {
+                cancellationToken.ThrowIfCancellationRequested();
+
                 string? line = await reader.ReadLineAsync();
 
                 // ignore empty lines and full-line comments
@@ -177,6 +185,12 @@ namespace Print3DCloud.Client.Printers
             this.serialPort.Dispose();
         }
 
+        /// <summary>
+        /// Sends a command along with a line number and checksum to ensure the right command is received and run.
+        /// Do not call this directly - only through <see cref="SequentialTaskRunner"/>! It guarantees this will be called sequentially.
+        /// </summary>
+        /// <param name="command">The G-code command to run.</param>
+        /// <returns>A task that completes once the command has been sent and acknowledged by the printer.</returns>
         private async Task SendCommandInternalAsync(string command)
         {
             if (!this.serialPort.IsOpen || this.writer == null)
@@ -184,16 +198,62 @@ namespace Print3DCloud.Client.Printers
                 throw new InvalidOperationException("Connection with printer lost");
             }
 
-            while (!this.sendNextCommand)
+            // reset current line number if necessary
+            if (this.currentLineNumber <= 0 || this.currentLineNumber == long.MaxValue)
             {
+                this.sendNextCommand = false;
+                await this.WriteLineAsync("M110 N0");
+
+                while (!this.sendNextCommand)
+                {
+                    await Task.Delay(10);
+                }
+
+                this.currentLineNumber = 1;
+            }
+
+            string line = $"N{this.currentLineNumber} {CommentRegex.Replace(command, string.Empty)} N{this.currentLineNumber}";
+            line += "*" + this.GetCommandChecksum(line);
+
+            this.resendLastCommand = true;
+
+            while (!this.sendNextCommand || this.resendLastCommand)
+            {
+                if (this.resendLastCommand)
+                {
+                    this.sendNextCommand = false;
+                    this.resendLastCommand = false;
+                    await this.WriteLineAsync(line);
+                }
+
                 await Task.Delay(10);
             }
 
-            this.sendNextCommand = false;
+            this.currentLineNumber++;
+        }
 
-            await this.writer.WriteLineAsync(command);
+        private byte GetCommandChecksum(string command)
+        {
+            byte checksum = 0;
 
-            this.logger.LogTrace("SEND: " + command);
+            foreach (char c in command)
+            {
+                checksum ^= (byte)c;
+            }
+
+            return checksum;
+        }
+
+        private async Task WriteLineAsync(string line)
+        {
+            if (this.writer == null)
+            {
+                throw new NullReferenceException("Writer is null");
+            }
+
+            await this.writer.WriteLineAsync(line);
+
+            this.logger.LogTrace("SEND: " + line);
         }
 
         private async Task TemperaturePolling()
@@ -260,12 +320,29 @@ namespace Print3DCloud.Client.Printers
             if (line.StartsWith("Error:"))
             {
                 string errorMessage = line[6..];
-                await this.DisconnectAsync(CancellationToken.None);
+
+                if (errorMessage == "Printer halted. kill() called!")
+                {
+                    await this.DisconnectAsync(CancellationToken.None);
+                }
+
+                this.logger.LogError(errorMessage);
+
                 return;
+            }
+            else if (line.StartsWith("Resend:"))
+            {
+                int lineNumber = int.Parse(line[7..].Trim());
+                this.logger.LogWarning("Printer requested resend for line number " + lineNumber);
+                this.resendLastCommand = true;
             }
             else if (line.StartsWith(CommandExpectedResponse))
             {
                 this.sendNextCommand = true;
+            }
+            else if (line.StartsWith("echo:"))
+            {
+                this.logger.LogDebug(line[5..]);
             }
 
             if (IsTemperatureLineRegex.IsMatch(line))

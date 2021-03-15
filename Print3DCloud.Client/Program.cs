@@ -1,7 +1,6 @@
 ﻿using System;
 using System.Collections.Generic;
 using System.IO;
-using System.IO.Ports;
 using System.Threading;
 using System.Threading.Tasks;
 using ActionCableSharp;
@@ -30,7 +29,7 @@ namespace Print3DCloud.Client
         {
             var loggerFactory = LoggerFactory.Create(builder =>
             {
-                builder.AddConsole().SetMinimumLevel(LogLevel.Trace);
+                builder.AddConsole().SetMinimumLevel(LogLevel.Debug);
             });
 
             Logging.LoggerFactory = loggerFactory;
@@ -46,7 +45,7 @@ namespace Print3DCloud.Client
 
             await printer.SendCommandAsync("G28 X Y");
 
-            _ = printer.StartPrintAsync(File.OpenRead(Path.Combine(Directory.GetCurrentDirectory(), "test.gcode")));
+            _ = printer.StartPrintAsync(File.OpenRead(Path.Combine(Directory.GetCurrentDirectory(), "test.gcode")), CancellationToken.None);
 
             ActionCableSubscription subscription = await client.Subscribe(new ClientIdentifier(Guid.NewGuid(), GetRandomBytes()), CancellationToken.None);
             subscription.MessageReceived += OnMessageReceived;
