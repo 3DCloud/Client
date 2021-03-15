@@ -32,7 +32,7 @@ namespace Print3DCloud.Tasks
                 tasks.Add(RunTaskAndRelease(action, semaphore, cancellationToken, item));
             }
 
-            await Task.WhenAll(tasks);
+            await Task.WhenAll(tasks).ConfigureAwait(false);
         }
 
         private static async Task RunTaskAndRelease<T>(Func<T, CancellationToken, Task> action, SemaphoreSlim semaphore, CancellationToken cancellationToken, T item)
