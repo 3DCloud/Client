@@ -23,7 +23,7 @@ namespace Print3DCloud.Client.Printers
         private const string ReportTemperaturesCommand = "M105";
 
         private static readonly Regex IsTemperatureLineRegex = new Regex(@"T:[\d\.]+ \/[\d\.]+ (?:(?:B|T\d|@\d):[\d\.]+ \/[\d\.]+ ?)+");
-        private static readonly Regex TemperaturesRegex = new Regex(@"(?<sensor>B|T\d):(?<current>[\d\.]+) \/(?<target>[\d\.]+)");
+        private static readonly Regex TemperaturesRegex = new Regex(@"(?<sensor>B|T\d?):(?<current>[\d\.]+) \/(?<target>[\d\.]+)");
 
         private readonly ILogger<MarlinPrinter> logger;
         private readonly SerialPort serialPort;
@@ -34,8 +34,9 @@ namespace Print3DCloud.Client.Printers
         private StreamWriter? writer;
         private bool sendNextCommand;
 
-        private List<double> hotendTemperatures;
-        private double? bedTemperature;
+        private TemperatureSensor activeHotendTemperature;
+        private List<TemperatureSensor> hotendTemperatures;
+        private TemperatureSensor? bedTemperature;
 
         /// <summary>
         /// Initializes a new instance of the <see cref="MarlinPrinter"/> class.
@@ -55,11 +56,11 @@ namespace Print3DCloud.Client.Printers
             };
 
             this.commandQueue = new SequentialTaskRunner();
-            this.hotendTemperatures = new List<double>();
+            this.hotendTemperatures = new List<TemperatureSensor>();
         }
 
         /// <inheritdoc/>
-        public string Identifier => throw new NotImplementedException();
+        public string Identifier => this.serialPort.PortName;
 
         /// <summary>
         /// Gets a value indicating whether or not this printer is currently connected.
@@ -101,9 +102,14 @@ namespace Print3DCloud.Client.Printers
         }
 
         /// <inheritdoc/>
-        public Task SendCommandAsync(string command)
+        public async Task SendCommandAsync(string command)
         {
-            return this.commandQueue.Enqueue(() => this.SendCommandInternalAsync(command));
+            while (this.commandQueue.TaskCount > 100)
+            {
+                await Task.Delay(10);
+            }
+
+            await this.commandQueue.Enqueue(() => this.SendCommandInternalAsync(command));
         }
 
         /// <inheritdoc/>
@@ -123,9 +129,22 @@ namespace Print3DCloud.Client.Printers
         }
 
         /// <inheritdoc/>
-        public Task StartPrintAsync(Stream fileStream)
+        public async Task StartPrintAsync(Stream fileStream)
         {
-            throw new NotImplementedException();
+            var reader = new StreamReader(fileStream);
+
+            while (!reader.EndOfStream)
+            {
+                string? line = await reader.ReadLineAsync();
+
+                // ignore empty lines and full-line comments
+                if (string.IsNullOrEmpty(line) || line.Trim().StartsWith(';'))
+                {
+                    continue;
+                }
+
+                await this.SendCommandAsync(line);
+            }
         }
 
         /// <inheritdoc/>
@@ -141,8 +160,9 @@ namespace Print3DCloud.Client.Printers
             {
                 IsConnected = this.IsConnected,
                 IsPrinting = false,
+                ActiveHotendTemperature = this.activeHotendTemperature,
                 HotendTemperatures = this.hotendTemperatures.ToArray(),
-                BedTemperature = this.bedTemperature,
+                BuildPlateTemperature = this.bedTemperature,
             };
         }
 
@@ -166,7 +186,7 @@ namespace Print3DCloud.Client.Printers
 
             while (!this.sendNextCommand)
             {
-                await Task.Delay(50);
+                await Task.Delay(10);
             }
 
             this.sendNextCommand = false;
@@ -180,9 +200,9 @@ namespace Print3DCloud.Client.Printers
         {
             try
             {
-                while (this.serialPort.IsOpen && this.writer != null && this.cancellationTokenSource?.IsCancellationRequested == false)
+                while (this.serialPort.IsOpen && this.cancellationTokenSource?.IsCancellationRequested == false)
                 {
-                    await this.writer.WriteLineAsync(ReportTemperaturesCommand);
+                    await this.SendCommandAsync(ReportTemperaturesCommand);
 
                     await Task.Delay(1000);
                 }
@@ -213,7 +233,7 @@ namespace Print3DCloud.Client.Printers
 
                     if (string.IsNullOrEmpty(line))
                     {
-                        break;
+                        continue;
                     }
 
                     await this.HandleLine(line);
@@ -237,19 +257,22 @@ namespace Print3DCloud.Client.Printers
         {
             this.logger.LogTrace("RECV: " + line);
 
-            if (line == CommandExpectedResponse)
-            {
-                this.sendNextCommand = true;
-            }
-            else if (line.StartsWith("Error:"))
+            if (line.StartsWith("Error:"))
             {
                 string errorMessage = line[6..];
                 await this.DisconnectAsync(CancellationToken.None);
+                return;
             }
-            else if (IsTemperatureLineRegex.IsMatch(line))
+            else if (line.StartsWith(CommandExpectedResponse))
+            {
+                this.sendNextCommand = true;
+            }
+
+            if (IsTemperatureLineRegex.IsMatch(line))
             {
                 MatchCollection matches = TemperaturesRegex.Matches(line);
 
+                this.bedTemperature = null;
                 this.hotendTemperatures.Clear();
 
                 foreach (Match match in matches)
@@ -257,14 +280,19 @@ namespace Print3DCloud.Client.Printers
                     string sensor = match.Groups["sensor"].Value;
                     double currentTemperature = double.Parse(match.Groups["current"].Value, CultureInfo.InvariantCulture);
                     double targetTemperature = double.Parse(match.Groups["target"].Value, CultureInfo.InvariantCulture);
+                    var temperature = new TemperatureSensor { Name = sensor, Current = currentTemperature, Target = targetTemperature };
 
                     if (sensor == "B")
                     {
-                        this.bedTemperature = currentTemperature;
+                        this.bedTemperature = temperature;
+                    }
+                    else if (sensor == "T")
+                    {
+                        this.activeHotendTemperature = temperature;
                     }
                     else if (sensor[0] == 'T')
                     {
-                        this.hotendTemperatures.Add(currentTemperature);
+                        this.hotendTemperatures.Add(temperature);
                     }
                     else
                     {

@@ -61,10 +61,10 @@ namespace Print3DCloud.Client.Printers
                 IsPrinting = this.printing,
                 HotendTemperatures = new[]
                 {
-                    210 + this.random.NextDouble() * 0.5,
-                    190 + this.random.NextDouble() * 0.5,
+                    new TemperatureSensor { Current = 210 + this.random.NextDouble() * 0.5 },
+                    new TemperatureSensor { Current = 190 + this.random.NextDouble() * 0.5 },
                 },
-                BedTemperature = 60 + this.random.NextDouble() * 0.5,
+                BuildPlateTemperature = new TemperatureSensor { Current = 60 + this.random.NextDouble() * 0.5 },
             };
         }
 

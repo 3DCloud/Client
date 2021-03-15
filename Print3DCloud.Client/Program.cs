@@ -1,5 +1,6 @@
 ﻿using System;
 using System.Collections.Generic;
+using System.IO;
 using System.IO.Ports;
 using System.Threading;
 using System.Threading.Tasks;
@@ -39,39 +40,23 @@ namespace Print3DCloud.Client
 
             logger.LogInformation(string.Join(", ", SerialPort.GetPortNames()));
 
-            using (var p = new MarlinPrinter("COM10", 115200))
-            {
-                await p.ConnectAsync(CancellationToken.None);
-                await p.SendCommandAsync("G28 X Y");
-
-                for (int i = 0; i < 10; i++)
-                {
-                    await p.SendCommandAsync($"G0 X{i * 10}");
-                }
-
-                await Task.Delay(10_000);
-                logger.LogInformation(p.GetState().ToString());
-            }
-
+            using var printer = new MarlinPrinter("COM10", 115200);
             using var webSocket = new ActionCableClient(new Uri("ws://localhost:3000/ws/"), "3DCloud-Client");
 
+            await printer.ConnectAsync(CancellationToken.None);
             await webSocket.ConnectAsync();
 
-            IPrinter printer = new DummyPrinter();
+            await printer.SendCommandAsync("G28 X Y");
+
+            _ = printer.StartPrintAsync(File.OpenRead(@"D:\Users\Nicolas\Desktop\lil benchy.gcode"));
+
+            ActionCableSubscription subscription = await webSocket.Subscribe(new ClientIdentifier(Guid.NewGuid(), GetRandomBytes()));
+            subscription.MessageReceived += OnMessageReceived;
 
             while (!Console.KeyAvailable)
             {
-                ActionCableSubscription subscription = await webSocket.Subscribe(new ClientIdentifier(Guid.NewGuid(), GetRandomBytes()));
-                subscription.MessageReceived += OnMessageReceived;
-
-                for (int i = 0; i < 5; i++)
-                {
-                    await subscription.Perform(new PrinterStateMessage(new Dictionary<string, PrinterState> { { printer.Identifier, printer.GetState() } }));
-                    await Task.Delay(500);
-                }
-
-                await subscription.Unsubscribe();
-                await Task.Delay(5000);
+                await subscription.Perform(new PrinterStateMessage(new Dictionary<string, PrinterState> { { printer.Identifier, printer.GetState() } }));
+                await Task.Delay(1000);
             }
 
             await webSocket.DisconnectAsync();

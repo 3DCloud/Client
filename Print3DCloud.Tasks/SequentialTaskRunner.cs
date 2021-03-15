@@ -13,6 +13,12 @@ namespace Print3DCloud.Tasks
     {
         private readonly ConcurrentQueue<SequentialTask> taskQueue = new ConcurrentQueue<SequentialTask>();
         private Task? currentTask;
+        private int taskCount;
+
+        /// <summary>
+        /// Gets the number of tasks that are currently queued.
+        /// </summary>
+        public int TaskCount => this.taskCount;
 
         /// <summary>
         /// Enqueue a <see cref="Task"/>.
@@ -29,6 +35,7 @@ namespace Print3DCloud.Tasks
                 cancellationToken.Register(() => tcs.TrySetCanceled(cancellationToken));
             }
 
+            Interlocked.Increment(ref this.taskCount);
             this.taskQueue.Enqueue(new VoidSequentialTask(task, tcs));
 
             this.StartNext();
@@ -52,6 +59,7 @@ namespace Print3DCloud.Tasks
                 cancellationToken.Register(() => tcs.TrySetCanceled(cancellationToken));
             }
 
+            Interlocked.Increment(ref this.taskCount);
             this.taskQueue.Enqueue(new GenericSequentialTask<T>(task, tcs));
 
             this.StartNext();
@@ -66,6 +74,8 @@ namespace Print3DCloud.Tasks
         {
             if (this.currentTask != null) return;
             if (!this.taskQueue.TryDequeue(out SequentialTask? item)) return;
+
+            Interlocked.Decrement(ref this.taskCount);
 
             this.currentTask = item.Run().ContinueWith(
                 (task, state) =>

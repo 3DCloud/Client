@@ -16,19 +16,24 @@
         public bool IsPrinting { get; init; }
 
         /// <summary>
+        /// Gets the temperature of the active hotend.
+        /// </summary>
+        public TemperatureSensor ActiveHotendTemperature { get; init; }
+
+        /// <summary>
         /// Gets the temperature(s) of the printer's hotend(s).
         /// </summary>
-        public double[] HotendTemperatures { get; init; }
+        public TemperatureSensor[] HotendTemperatures { get; init; }
 
         /// <summary>
         /// Gets the temperature of the bed. Set to null if the printer does not have a heated build plate.
         /// </summary>
-        public double? BedTemperature { get; init; }
+        public TemperatureSensor? BuildPlateTemperature { get; init; }
 
         /// <inheritdoc/>
         public override string ToString()
         {
-            return $"{{ IsConnected = {this.IsConnected}, IsPrinting = {this.IsPrinting}, HotendTemperatures = [{string.Join(", ", this.HotendTemperatures)}], BedTemperature = {this.BedTemperature?.ToString() ?? "null"} }}";
+            return $"{{ IsConnected = {this.IsConnected}, IsPrinting = {this.IsPrinting}, HotendTemperatures = [{string.Join(", ", this.HotendTemperatures)}], BuildPlateTemperature = {this.BuildPlateTemperature?.ToString() ?? "N/A"} }}";
         }
     }
 }
