@@ -12,6 +12,8 @@ namespace Print3DCloud.Tasks
     public class SequentialTaskRunner
     {
         private readonly ConcurrentQueue<SequentialTask> taskQueue = new ConcurrentQueue<SequentialTask>();
+        private readonly object taskLock = new object();
+
         private Task? currentTask;
         private int taskCount;
 
@@ -72,17 +74,20 @@ namespace Print3DCloud.Tasks
         /// </summary>
         private void StartNext()
         {
-            if (this.currentTask != null) return;
-            if (!this.taskQueue.TryDequeue(out SequentialTask? item)) return;
-
-            Interlocked.Decrement(ref this.taskCount);
-
-            this.currentTask = item.Run().ContinueWith(
-                (task, state) =>
+            lock (this.taskLock)
             {
-                this.currentTask = null;
-                this.StartNext();
-            }, TaskContinuationOptions.None);
+                if (this.currentTask != null) return;
+                if (!this.taskQueue.TryDequeue(out SequentialTask? item)) return;
+
+                Interlocked.Decrement(ref this.taskCount);
+
+                this.currentTask = item.Run().ContinueWith(
+                    (task, state) =>
+                    {
+                        this.currentTask = null;
+                        this.StartNext();
+                    }, TaskContinuationOptions.None);
+            }
         }
 
         private abstract class SequentialTask
