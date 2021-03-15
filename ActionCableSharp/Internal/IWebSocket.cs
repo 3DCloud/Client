@@ -33,6 +33,15 @@ namespace ActionCableSharp.Internal
         Task CloseAsync(WebSocketCloseStatus closeStatus, string? statusDescription, CancellationToken cancellationToken);
 
         /// <summary>
+        /// Close the output for the WebSocket instance as an asynchronous operation.
+        /// </summary>
+        /// <param name="closeStatus">The WebSocket close status.</param>
+        /// <param name="statusDescription">A description of the close status.</param>
+        /// <param name="cancellationToken">A <see cref="CancellationToken"/> used to propagate notification that the operation should be canceled.</param>
+        /// <returns>The task object representing the asynchronous operation.</returns>
+        Task CloseOutputAsync(WebSocketCloseStatus closeStatus, string? statusDescription, CancellationToken cancellationToken);
+
+        /// <summary>
         /// Receives data from the WebSocket as an asynchronous operation.
         /// </summary>
         /// <param name="buffer">The region of memory to receive the response.</param>

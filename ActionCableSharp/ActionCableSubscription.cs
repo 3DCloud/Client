@@ -1,5 +1,6 @@
 ﻿using System;
 using System.Text.Json;
+using System.Threading;
 using System.Threading.Tasks;
 using ActionCableSharp.Internal;
 
@@ -44,19 +45,21 @@ namespace ActionCableSharp
         /// Perform an action on the server.
         /// </summary>
         /// <param name="data"><see cref="ActionMessage"/> that contains the method name and optional data.</param>
+        /// <param name="cancellationToken">A <see cref="CancellationToken"/> used to propagate notification that the operation should be canceled.</param>
         /// <returns>A <see cref="Task"/> that completes once the message has been sent.</returns>
-        public Task Perform(ActionMessage data)
+        public Task Perform(ActionMessage data, CancellationToken cancellationToken)
         {
-            return this.client.EnqueueCommand("message", this.Identifier, data);
+            return this.client.EnqueueCommand("message", this.Identifier, cancellationToken, data);
         }
 
         /// <summary>
         /// Unsubscribe from this subscription on the server.
         /// </summary>
+        /// <param name="cancellationToken">A <see cref="CancellationToken"/> used to propagate notification that the operation should be canceled.</param>
         /// <returns>A <see cref="Task"/> that completes once the unsubscription request has been sent to the server.</returns>
-        public async Task Unsubscribe()
+        public async Task Unsubscribe(CancellationToken cancellationToken)
         {
-            await this.client.Unsubscribe(this);
+            await this.client.Unsubscribe(this, cancellationToken);
 
             this.State = SubscriptionState.Unsubscribed;
         }

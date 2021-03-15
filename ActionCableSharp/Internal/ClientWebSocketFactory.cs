@@ -1,10 +1,12 @@
-﻿using System.Net.WebSockets;
+﻿using System.Diagnostics.CodeAnalysis;
+using System.Net.WebSockets;
 
 namespace ActionCableSharp.Internal
 {
     /// <summary>
-    /// <see cref="IWebSocketFactory" /> that creates <see cref="ClientWebSocketWrapper"/> instances (wrapped <see cref="ClientWebSocket"/> instances).
+    /// <see cref="IWebSocketFactory" /> that creates <see cref="ClientWebSocketWrapper"/> instances (wrapped <see cref="ClientWebSocket"/> instances). Contains no logic.
     /// </summary>
+    [ExcludeFromCodeCoverage]
     internal class ClientWebSocketFactory : IWebSocketFactory
     {
         /// <summary>

@@ -1,4 +1,5 @@
 ﻿using System;
+using System.Diagnostics.CodeAnalysis;
 using System.Net.WebSockets;
 using System.Threading;
 using System.Threading.Tasks;
@@ -6,8 +7,9 @@ using System.Threading.Tasks;
 namespace ActionCableSharp.Internal
 {
     /// <summary>
-    /// An <see cref="IWebSocket"/> wrapper for the built-in <see cref="ClientWebSocket"/> since the latter can't be mocked.
+    /// An <see cref="IWebSocket"/> wrapper for the built-in <see cref="ClientWebSocket"/> since the latter can't be mocked. Contains no logic.
     /// </summary>
+    [ExcludeFromCodeCoverage]
     internal class ClientWebSocketWrapper : IWebSocket
     {
         private readonly ClientWebSocket webSocket;
@@ -25,39 +27,31 @@ namespace ActionCableSharp.Internal
         public bool IsConnected => this.webSocket?.State == WebSocketState.Open;
 
         /// <inheritdoc/>
-        public Task CloseAsync(WebSocketCloseStatus closeStatus, string? statusDescription, CancellationToken cancellationToken)
-        {
-            return this.webSocket.CloseAsync(closeStatus, statusDescription, cancellationToken);
-        }
+        public Task CloseAsync(WebSocketCloseStatus closeStatus, string? statusDescription, CancellationToken cancellationToken) =>
+            this.webSocket.CloseAsync(closeStatus, statusDescription, cancellationToken);
 
         /// <inheritdoc/>
-        public Task ConnectAsync(Uri uri, CancellationToken cancellationToken)
-        {
-            return this.webSocket.ConnectAsync(uri, cancellationToken);
-        }
+        public Task CloseOutputAsync(WebSocketCloseStatus closeStatus, string? statusDescription, CancellationToken cancellationToken) =>
+            this.webSocket.CloseOutputAsync(closeStatus, statusDescription, cancellationToken);
 
         /// <inheritdoc/>
-        public void Dispose()
-        {
+        public Task ConnectAsync(Uri uri, CancellationToken cancellationToken) =>
+            this.webSocket.ConnectAsync(uri, cancellationToken);
+
+        /// <inheritdoc/>
+        public void Dispose() =>
             this.webSocket.Dispose();
-        }
 
         /// <inheritdoc/>
-        public Task<WebSocketReceiveResult> ReceiveAsync(ArraySegment<byte> buffer, CancellationToken cancellationToken)
-        {
-            return this.webSocket.ReceiveAsync(buffer, cancellationToken);
-        }
+        public Task<WebSocketReceiveResult> ReceiveAsync(ArraySegment<byte> buffer, CancellationToken cancellationToken) =>
+            this.webSocket.ReceiveAsync(buffer, cancellationToken);
 
         /// <inheritdoc/>
-        public Task SendAsync(ArraySegment<byte> buffer, WebSocketMessageType messageType, bool endOfMessage, CancellationToken cancellationToken)
-        {
-            return this.webSocket.SendAsync(buffer, messageType, endOfMessage, cancellationToken);
-        }
+        public Task SendAsync(ArraySegment<byte> buffer, WebSocketMessageType messageType, bool endOfMessage, CancellationToken cancellationToken) =>
+            this.webSocket.SendAsync(buffer, messageType, endOfMessage, cancellationToken);
 
         /// <inheritdoc/>
-        public void SetRequestHeader(string headerName, string? headerValue)
-        {
+        public void SetRequestHeader(string headerName, string? headerValue) =>
             this.webSocket.Options.SetRequestHeader(headerName, headerValue);
-        }
     }
 }

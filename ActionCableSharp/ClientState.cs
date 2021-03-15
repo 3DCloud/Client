@@ -16,6 +16,11 @@
         Pending,
 
         /// <summary>
+        /// Waiting for the server's welcome message to confirm connection was successful.
+        /// </summary>
+        WaitingForWelcome,
+
+        /// <summary>
         /// The client is connected to the server.
         /// </summary>
         Connected,
@@ -24,5 +29,10 @@
         /// The client is attempting to reconnect after losing its connection to the server.
         /// </summary>
         Reconnecting,
+
+        /// <summary>
+        /// The server has requested a disconnect.
+        /// </summary>
+        Disconnecting,
     }
 }

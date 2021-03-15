@@ -38,28 +38,30 @@ namespace Print3DCloud.Client
 
             logger = loggerFactory.CreateLogger<Program>();
 
-            logger.LogInformation(string.Join(", ", SerialPort.GetPortNames()));
-
-            using var printer = new MarlinPrinter("COM10", 115200);
-            using var webSocket = new ActionCableClient(new Uri("ws://localhost:3000/ws/"), "3DCloud-Client");
+            using var printer = new MarlinPrinter("COM9", 115200);
+            using var client = new ActionCableClient(new Uri("ws://localhost:3000/ws/"), "3DCloud-Client");
 
             await printer.ConnectAsync(CancellationToken.None);
-            await webSocket.ConnectAsync();
+            await client.ConnectAsync(CancellationToken.None);
 
             await printer.SendCommandAsync("G28 X Y");
 
-            _ = printer.StartPrintAsync(File.OpenRead(@"D:\Users\Nicolas\Desktop\lil benchy.gcode"));
+            _ = printer.StartPrintAsync(File.OpenRead(Path.Combine(Directory.GetCurrentDirectory(), "test.gcode")));
 
-            ActionCableSubscription subscription = await webSocket.Subscribe(new ClientIdentifier(Guid.NewGuid(), GetRandomBytes()));
+            ActionCableSubscription subscription = await client.Subscribe(new ClientIdentifier(Guid.NewGuid(), GetRandomBytes()), CancellationToken.None);
             subscription.MessageReceived += OnMessageReceived;
 
             while (!Console.KeyAvailable)
             {
-                await subscription.Perform(new PrinterStateMessage(new Dictionary<string, PrinterState> { { printer.Identifier, printer.GetState() } }));
+                if (client.State == ClientState.Connected)
+                {
+                    await subscription.Perform(new PrinterStateMessage(new Dictionary<string, PrinterState> { { printer.Identifier, printer.GetState() } }), CancellationToken.None);
+                }
+
                 await Task.Delay(1000);
             }
 
-            await webSocket.DisconnectAsync();
+            await client.DisconnectAsync(CancellationToken.None);
         }
 
         private static string GetRandomBytes()
