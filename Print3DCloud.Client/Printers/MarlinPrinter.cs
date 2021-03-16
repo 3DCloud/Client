@@ -79,8 +79,11 @@ namespace Print3DCloud.Client.Printers
             this.serialPort.Open();
 
             this.cancellationTokenSource = new CancellationTokenSource();
-            this.reader = new StreamReader(this.serialPort.BaseStream, Encoding.UTF8, false, -1, true);
-            this.writer = new StreamWriter(this.serialPort.BaseStream, Encoding.UTF8, -1, true)
+
+            // I'm not sure if Marlin supports a more modern encoding, but considering all G-code fits
+            // in standard ASCII and we trim comments, we can just default to ASCII here for simplicity's sake
+            this.reader = new StreamReader(this.serialPort.BaseStream, Encoding.ASCII, false, -1, true);
+            this.writer = new StreamWriter(this.serialPort.BaseStream, Encoding.ASCII, -1, true)
             {
                 AutoFlush = true, // we want lines to be sent immediately
             };
@@ -89,6 +92,7 @@ namespace Print3DCloud.Client.Printers
 
             while (line != PrinterAliveLine)
             {
+                cancellationToken.ThrowIfCancellationRequested();
                 line = await this.reader.ReadLineAsync();
             }
 
@@ -96,6 +100,7 @@ namespace Print3DCloud.Client.Printers
 
             while (line != CommandExpectedResponse)
             {
+                cancellationToken.ThrowIfCancellationRequested();
                 line = await this.reader.ReadLineAsync();
             }
 
@@ -103,8 +108,8 @@ namespace Print3DCloud.Client.Printers
 
             this.sendNextCommand = true;
 
-            _ = Task.Run(this.TemperaturePolling);
-            _ = Task.Run(this.ReceiveLoop);
+            _ = Task.Run(this.TemperaturePolling, cancellationToken);
+            _ = Task.Run(this.ReceiveLoop, cancellationToken);
         }
 
         /// <inheritdoc/>
@@ -112,7 +117,7 @@ namespace Print3DCloud.Client.Printers
         {
             while (this.commandQueue.TaskCount > 100)
             {
-                await Task.Delay(10);
+                await Task.Delay(25);
             }
 
             await this.commandQueue.Enqueue(() => this.SendCommandInternalAsync(command));
@@ -206,7 +211,7 @@ namespace Print3DCloud.Client.Printers
 
                 while (!this.sendNextCommand)
                 {
-                    await Task.Delay(10);
+                    await Task.Delay(25);
                 }
 
                 this.currentLineNumber = 1;
@@ -232,13 +237,20 @@ namespace Print3DCloud.Client.Printers
             this.currentLineNumber++;
         }
 
+        /// <summary>
+        /// Calculates a simple checksum for the given command.
+        /// Based on Marlin's source code: https://github.com/MarlinFirmware/Marlin/blob/8e1ea6a2fa1b90a58b4257eec9fbc2923adda680/Marlin/src/gcode/queue.cpp#L485
+        /// </summary>
+        /// <param name="command">The command for which to generate a checksum.</param>
+        /// <returns>The command's checksum.</returns>
         private byte GetCommandChecksum(string command)
         {
+            byte[] bytes = Encoding.ASCII.GetBytes(command);
             byte checksum = 0;
 
-            foreach (char c in command)
+            foreach (byte b in bytes)
             {
-                checksum ^= (byte)c;
+                checksum ^= b;
             }
 
             return checksum;
