@@ -39,16 +39,16 @@ namespace Print3DCloud.Client.Printers
         }
 
         /// <inheritdoc/>
-        public Task DisconnectAsync(CancellationToken cancellationToken)
+        public Task DisconnectAsync()
         {
             this.connected = false;
             return Task.CompletedTask;
         }
 
         /// <inheritdoc/>
-        public Task SendCommandAsync(string command)
+        public Task SendCommandAsync(string command, CancellationToken cancellationToken)
         {
-            return Task.CompletedTask;
+            return Task.Delay(50);
         }
 
         /// <inheritdoc/>

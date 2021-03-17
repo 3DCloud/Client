@@ -31,16 +31,16 @@ namespace Print3DCloud.Client.Printers
         /// <summary>
         /// Disconnects the printer.
         /// </summary>
-        /// <param name="cancellationToken">A <see cref="CancellationToken"/> used to propagate notification that the operation should be canceled.</param>
         /// <returns>The task object representing the asynchronous operation.</returns>
-        Task DisconnectAsync(CancellationToken cancellationToken);
+        Task DisconnectAsync();
 
         /// <summary>
         /// Sends a G-code command to the printer.
         /// </summary>
         /// <param name="command">The command to send.</param>
+        /// <param name="cancellationToken">A <see cref="CancellationToken"/> used to propagate notification that the operation should be canceled.</param>
         /// <returns>A <see cref="Task"/> that completes once the command has been sent.</returns>
-        Task SendCommandAsync(string command);
+        Task SendCommandAsync(string command, CancellationToken cancellationToken);
 
         /// <summary>
         /// Starts a print on this printer.

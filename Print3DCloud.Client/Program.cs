@@ -29,7 +29,7 @@ namespace Print3DCloud.Client
         {
             var loggerFactory = LoggerFactory.Create(builder =>
             {
-                builder.AddConsole().SetMinimumLevel(LogLevel.Debug);
+                builder.AddConsole().SetMinimumLevel(LogLevel.Trace);
             });
 
             Logging.LoggerFactory = loggerFactory;
@@ -43,9 +43,11 @@ namespace Print3DCloud.Client
             await printer.ConnectAsync(CancellationToken.None);
             await client.ConnectAsync(CancellationToken.None);
 
-            await printer.SendCommandAsync("G28 X Y");
+            await printer.SendCommandAsync("G28", CancellationToken.None);
 
-            _ = printer.StartPrintAsync(File.OpenRead(Path.Combine(Directory.GetCurrentDirectory(), args[1])), CancellationToken.None);
+            var cts = new CancellationTokenSource();
+
+            Task printTask = printer.StartPrintAsync(File.OpenRead(Path.Combine(Directory.GetCurrentDirectory(), args[1])), cts.Token).ContinueWith(HandlePrintTaskCompleted);
 
             ActionCableSubscription subscription = await client.Subscribe(new ClientIdentifier(Guid.NewGuid(), GetRandomBytes()), CancellationToken.None);
             subscription.MessageReceived += OnMessageReceived;
@@ -60,6 +62,9 @@ namespace Print3DCloud.Client
                 await Task.Delay(1000);
             }
 
+            cts.Cancel();
+            await printTask;
+            await printer.DisconnectAsync();
             await client.DisconnectAsync(CancellationToken.None);
         }
 
@@ -73,6 +78,23 @@ namespace Print3DCloud.Client
         private static void OnMessageReceived(ActionCableMessage message)
         {
             logger?.LogInformation(message.AsObject<SampleMessage>()?.SampleProperty);
+        }
+
+        private static void HandlePrintTaskCompleted(Task task)
+        {
+            if (task.IsCompletedSuccessfully)
+            {
+                logger.LogDebug("Print completed");
+            }
+            else if (task.IsCanceled)
+            {
+                logger.LogWarning("Print canceled");
+            }
+            else if (task.IsFaulted)
+            {
+                logger.LogError("Print errored");
+                logger.LogError(task.Exception!.ToString());
+            }
         }
     }
 }

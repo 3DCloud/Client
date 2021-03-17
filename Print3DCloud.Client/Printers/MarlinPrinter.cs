@@ -1,5 +1,6 @@
 ﻿using System;
 using System.Collections.Generic;
+using System.Diagnostics.CodeAnalysis;
 using System.Globalization;
 using System.IO;
 using System.IO.Ports;
@@ -26,16 +27,19 @@ namespace Print3DCloud.Client.Printers
         private static readonly Regex TemperaturesRegex = new Regex(@"(?<sensor>B|T\d?):(?<current>[\d\.]+) \/(?<target>[\d\.]+)");
 
         private readonly ILogger<MarlinPrinter> logger;
-        private readonly SerialPort serialPort;
-        private readonly SemaphoreSlim semaphore;
+        private readonly SemaphoreSlim sendCommandSemaphore;
+        private readonly SemaphoreSlim commandAcknowledgedSemaphore;
 
-        private CancellationTokenSource? cancellationTokenSource;
-        private StreamReader? reader;
-        private StreamWriter? writer;
+        private CancellationTokenSource globalCancellationTokenSource;
+        private CancellationTokenSource printCancellationTokenSource;
+        private AsyncSerialPort? serialPort;
+
+        private Task? temperaturePollingTask;
+        private Task? receiveLoopTask;
+        private Task? printTask;
 
         private long currentLineNumber;
-        private bool resendLastCommand;
-        private bool sendNextCommand;
+        private long resendLine;
 
         private TemperatureSensor activeHotendTemperature;
         private List<TemperatureSensor> hotendTemperatures;
@@ -49,27 +53,48 @@ namespace Print3DCloud.Client.Printers
         /// <param name="parity">The type of parity checking to use when communicating.</param>
         public MarlinPrinter(string portName, int baudRate = 250000, Parity parity = Parity.None)
         {
+            this.PortName = portName;
+            this.BaudRate = baudRate;
+            this.Parity = parity;
+
             this.logger = Logging.LoggerFactory.CreateLogger<MarlinPrinter>();
-
-            this.serialPort = new SerialPort(portName, baudRate, parity)
-            {
-                RtsEnable = true,
-                DtrEnable = true,
-                NewLine = "\n",
-            };
-
-            this.semaphore = new SemaphoreSlim(1);
+            this.sendCommandSemaphore = new SemaphoreSlim(1);
+            this.commandAcknowledgedSemaphore = new SemaphoreSlim(1);
             this.hotendTemperatures = new List<TemperatureSensor>();
+            this.globalCancellationTokenSource = new CancellationTokenSource();
+            this.printCancellationTokenSource = new CancellationTokenSource();
         }
 
         /// <inheritdoc/>
-        public string Identifier => this.serialPort.PortName;
+        public string Identifier => this.PortName;
+
+        /// <summary>
+        /// Gets the encoding used when communicating with the printer.
+        /// </summary>
+        // I'm not sure if Marlin supports a more modern encoding, but considering all G-code fits
+        // in standard ASCII and we trim comments, we can just default to ASCII here for simplicity's sake
+        public Encoding Encoding => Encoding.ASCII;
+
+        /// <summary>
+        /// Gets the name of the serial port.
+        /// </summary>
+        public string PortName { get; }
+
+        /// <summary>
+        /// Gets the baud rate used when communicating via serial.
+        /// </summary>
+        public int BaudRate { get; }
+
+        /// <summary>
+        /// Gets the <see cref="Parity"/> used when communicating via serial.
+        /// </summary>
+        public Parity Parity { get; }
 
         /// <inheritdoc/>
         public PrinterState State => new PrinterState
         {
             IsConnected = this.IsConnected,
-            IsPrinting = false,
+            IsPrinting = this.IsPrinting,
             ActiveHotendTemperature = this.activeHotendTemperature,
             HotendTemperatures = this.hotendTemperatures.ToArray(),
             BuildPlateTemperature = this.bedTemperature,
@@ -78,151 +103,170 @@ namespace Print3DCloud.Client.Printers
         /// <summary>
         /// Gets a value indicating whether or not this printer is currently connected.
         /// </summary>
-        public bool IsConnected { get; private set; }
+        [MemberNotNullWhen(true, nameof(serialPort))]
+        public bool IsConnected => this.serialPort != null && this.serialPort.IsOpen;
+
+        /// <summary>
+        /// Gets a value indicating whether or not this printer is currently printing.
+        /// </summary>
+        [MemberNotNullWhen(true, nameof(printTask))]
+        public bool IsPrinting => this.printTask != null && !this.printTask.IsCompleted;
 
         /// <inheritdoc/>
         public async Task ConnectAsync(CancellationToken cancellationToken)
         {
-            this.logger.LogInformation($"Connecting to Marlin printer at port '{this.serialPort.PortName}'...");
+            this.logger.LogInformation($"Connecting to Marlin printer at port '{this.PortName}'...");
+
+            this.globalCancellationTokenSource = new CancellationTokenSource();
+
+            this.serialPort = new AsyncSerialPort(this.PortName, this.BaudRate, this.Parity, this.Encoding)
+            {
+                RtsEnable = true,
+                DtrEnable = true,
+                NewLine = "\n",
+            };
 
             this.serialPort.Open();
 
-            this.cancellationTokenSource = new CancellationTokenSource();
-
-            // I'm not sure if Marlin supports a more modern encoding, but considering all G-code fits
-            // in standard ASCII and we trim comments, we can just default to ASCII here for simplicity's sake
-            this.reader = new StreamReader(this.serialPort.BaseStream, Encoding.ASCII, false, -1, true);
-            this.writer = new StreamWriter(this.serialPort.BaseStream, Encoding.ASCII, -1, true)
-            {
-                AutoFlush = true, // we want lines to be sent immediately
-            };
+            cancellationToken.Register(() => this.Dispose());
 
             string? line = null;
 
             while (line != PrinterAliveLine)
             {
-                cancellationToken.ThrowIfCancellationRequested();
-                line = await this.reader.ReadLineAsync();
+                line = await this.ReadLineAsync();
             }
 
-            await this.writer.WriteLineAsync(HelloCommand);
+            await this.WriteLineAsync(HelloCommand, cancellationToken);
 
             while (line != CommandExpectedResponse)
             {
-                cancellationToken.ThrowIfCancellationRequested();
-                line = await this.reader.ReadLineAsync();
+                line = await this.ReadLineAsync();
             }
 
             this.logger.LogInformation($"Connected");
 
-            this.sendNextCommand = true;
-
-            _ = Task.Run(this.TemperaturePolling, cancellationToken);
-            _ = Task.Run(this.ReceiveLoop, cancellationToken);
+            this.temperaturePollingTask = Task.Run(this.TemperaturePolling, cancellationToken).ContinueWith(this.HandleTemperaturePollingCompleted);
+            this.receiveLoopTask = Task.Run(this.ReceiveLoop, cancellationToken).ContinueWith(this.HandleReceiveLoopCompleted);
         }
 
         /// <inheritdoc/>
-        public async Task SendCommandAsync(string command)
+        public Task SendCommandAsync(string command, CancellationToken cancellationToken)
         {
-            if (!this.serialPort.IsOpen || this.writer == null)
-            {
-                throw new InvalidOperationException("Connection with printer lost");
-            }
+            CancellationTokenSource commandTokenSource = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken, this.globalCancellationTokenSource.Token);
 
-            await this.semaphore.WaitAsync();
-
-            // reset current line number if necessary
-            if (this.currentLineNumber <= 0 || this.currentLineNumber == long.MaxValue)
-            {
-                this.sendNextCommand = false;
-                await this.WriteLineAsync("M110 N0");
-
-                while (!this.sendNextCommand)
-                {
-                    await Task.Delay(25);
-                }
-
-                this.currentLineNumber = 1;
-            }
-
-            string line = $"N{this.currentLineNumber} {CommentRegex.Replace(command, string.Empty)} N{this.currentLineNumber}";
-            line += "*" + this.GetCommandChecksum(line);
-
-            this.resendLastCommand = true;
-
-            while (!this.sendNextCommand || this.resendLastCommand)
-            {
-                if (this.resendLastCommand)
-                {
-                    this.sendNextCommand = false;
-                    this.resendLastCommand = false;
-                    await this.WriteLineAsync(line);
-                }
-
-                await Task.Delay(10);
-            }
-
-            this.currentLineNumber++;
-            this.semaphore.Release();
+            return this.SendCommandInternalAsync(command, commandTokenSource.Token);
         }
 
         /// <inheritdoc/>
-        public Task DisconnectAsync(CancellationToken cancellationToken)
+        public async Task DisconnectAsync()
         {
-            this.IsConnected = false;
+            this.Dispose();
 
-            this.writer?.Dispose();
-            this.reader?.Dispose();
+            this.logger.LogDebug("Waiting for all tasks to complete...");
 
-            this.writer = null;
-            this.reader = null;
+            this.globalCancellationTokenSource.Cancel();
 
-            this.serialPort.Close();
+            var tasks = new List<Task>(3);
 
-            return Task.CompletedTask;
+            if (this.printTask != null) tasks.Add(this.printTask.WaitForCompletionAsync());
+            if (this.temperaturePollingTask != null) tasks.Add(this.temperaturePollingTask.WaitForCompletionAsync());
+            if (this.receiveLoopTask != null) tasks.Add(this.receiveLoopTask.WaitForCompletionAsync());
+
+            await Task.WhenAll(tasks);
         }
 
         /// <inheritdoc/>
-        public async Task StartPrintAsync(Stream fileStream, CancellationToken cancellationToken)
+        public Task StartPrintAsync(Stream fileStream, CancellationToken cancellationToken)
         {
-            using var reader = new StreamReader(fileStream);
-
-            while (!reader.EndOfStream)
+            if (this.IsPrinting)
             {
-                cancellationToken.ThrowIfCancellationRequested();
-
-                string? line = await reader.ReadLineAsync();
-
-                // ignore empty lines and full-line comments
-                if (string.IsNullOrEmpty(line) || line.Trim().StartsWith(';'))
-                {
-                    continue;
-                }
-
-                await this.SendCommandAsync(line);
+                throw new InvalidOperationException("Already printing something");
             }
+
+            this.printCancellationTokenSource = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken, this.globalCancellationTokenSource.Token);
+
+            return this.printTask = this.StartPrintInternalAsync(fileStream, this.printCancellationTokenSource.Token);
         }
 
         /// <inheritdoc/>
-        public Task AbortPrintAsync(CancellationToken cancellationToken)
+        public async Task AbortPrintAsync(CancellationToken cancellationToken)
         {
-            throw new NotImplementedException();
+            if (!this.IsPrinting) throw new InvalidOperationException("No print is currently running.");
+
+            this.printCancellationTokenSource?.Cancel();
+            await this.printTask.WaitForCompletionAsync();
         }
 
         /// <inheritdoc/>
         public void Dispose()
         {
-            this.IsConnected = false;
+            this.serialPort?.Dispose();
+        }
 
-            this.reader?.Dispose();
-            this.writer?.Dispose();
+        private async Task SendCommandInternalAsync(string command, CancellationToken cancellationToken)
+        {
+            if (!this.IsConnected)
+            {
+                throw new InvalidOperationException("Connection with printer lost");
+            }
 
-            this.serialPort.Dispose();
+            await this.sendCommandSemaphore.WaitAsync(cancellationToken);
+
+            // reset current line number if necessary
+            if (this.currentLineNumber <= 0 || this.currentLineNumber == long.MaxValue)
+            {
+                await this.WriteLineAsync("M110 N0", cancellationToken);
+                await this.commandAcknowledgedSemaphore.WaitAsync(cancellationToken);
+
+                this.currentLineNumber = 1;
+            }
+
+            string line = $"N{this.currentLineNumber} {CommentRegex.Replace(command, string.Empty).Trim()} N{this.currentLineNumber}";
+            line += "*" + this.GetCommandChecksum(line);
+
+            this.resendLine = this.currentLineNumber;
+
+            while (this.resendLine > 0)
+            {
+                if (this.resendLine != this.currentLineNumber)
+                {
+                    throw new InvalidOperationException($"Printer requested line {this.resendLine} but we last sent {this.currentLineNumber}");
+                }
+
+                this.resendLine = 0;
+
+                await this.WriteLineAsync(line, cancellationToken);
+                await this.commandAcknowledgedSemaphore.WaitAsync(cancellationToken);
+            }
+
+            this.currentLineNumber++;
+            this.sendCommandSemaphore.Release();
+        }
+
+        private async Task StartPrintInternalAsync(Stream fileStream, CancellationToken cancellationToken)
+        {
+            using var fileReader = new StreamReader(fileStream);
+
+            while (this.IsConnected)
+            {
+                string? line = await fileReader.ReadLineAsync();
+
+                if (line == null) break;
+
+                // ignore empty lines and full-line comments
+                if (line.Trim().StartsWith(';'))
+                {
+                    continue;
+                }
+
+                await this.SendCommandInternalAsync(line, cancellationToken);
+            }
         }
 
         /// <summary>
         /// Calculates a simple checksum for the given command.
-        /// Based on Marlin's source code: https://github.com/MarlinFirmware/Marlin/blob/8e1ea6a2fa1b90a58b4257eec9fbc2923adda680/Marlin/src/gcode/queue.cpp#L485
+        /// Based on Marlin's source code: https://github.com/MarlinFirmware/Marlin/blob/8e1ea6a2fa1b90a58b4257eec9fbc2923adda680/Marlin/src/gcode/queue.cpp#L485.
         /// </summary>
         /// <param name="command">The command for which to generate a checksum.</param>
         /// <returns>The command's checksum.</returns>
@@ -239,86 +283,100 @@ namespace Print3DCloud.Client.Printers
             return checksum;
         }
 
-        private async Task WriteLineAsync(string line)
+        private async Task<string> ReadLineAsync()
         {
-            if (this.writer == null)
+            if (!this.IsConnected)
             {
-                throw new NullReferenceException("Writer is null");
+                throw new ObjectDisposedException("Serial port is closed");
             }
 
-            await this.writer.WriteLineAsync(line);
+            string line = await this.serialPort.ReadLineAsync();
+
+            this.logger.LogTrace("RECV: " + line);
+
+            return line;
+        }
+
+        private Task WriteLineAsync(string line, CancellationToken cancellationToken)
+        {
+            if (!this.IsConnected)
+            {
+                throw new ObjectDisposedException("Serial port is closed");
+            }
 
             this.logger.LogTrace("SEND: " + line);
+
+            return this.serialPort.WriteLineAsync(line, cancellationToken);
         }
 
         private async Task TemperaturePolling()
         {
-            try
+            while (this.IsConnected)
             {
-                while (this.serialPort.IsOpen && this.cancellationTokenSource?.IsCancellationRequested == false)
-                {
-                    await this.SendCommandAsync(ReportTemperaturesCommand);
+                await this.SendCommandInternalAsync(ReportTemperaturesCommand, this.globalCancellationTokenSource.Token);
 
-                    await Task.Delay(1000);
-                }
+                await Task.Delay(1000, this.globalCancellationTokenSource.Token);
             }
-            catch (OperationCanceledException)
-            {
-            }
-            catch (Exception ex)
-            {
-                this.logger.LogError("Unexpected error occured in printer temperature polling loop");
-                this.logger.LogError(ex.ToString());
+        }
 
-                await this.DisconnectAsync(CancellationToken.None);
-            }
-            finally
+        private void HandleTemperaturePollingCompleted(Task task)
+        {
+            if (task.IsCompletedSuccessfully)
             {
-                await this.DisconnectAsync(CancellationToken.None);
+                this.logger.LogDebug("Temperature Polling task completed");
+            }
+            else if (task.IsCanceled)
+            {
+                this.logger.LogWarning("Temperature Polling task canceled");
+            }
+            else if (task.IsFaulted)
+            {
+                this.logger.LogError("Temperature Polling task errored");
+                this.logger.LogError(task.Exception!.ToString());
             }
         }
 
         private async Task ReceiveLoop()
         {
-            try
+            while (this.IsConnected)
             {
-                while (this.serialPort.IsOpen && this.reader != null && this.cancellationTokenSource?.IsCancellationRequested == false)
+                string? line = await this.ReadLineAsync();
+
+                if (string.IsNullOrEmpty(line))
                 {
-                    string? line = await this.reader.ReadLineAsync();
-
-                    if (string.IsNullOrEmpty(line))
-                    {
-                        continue;
-                    }
-
-                    await this.HandleLine(line);
+                    continue;
                 }
-            }
-            catch (OperationCanceledException)
-            {
-            }
-            catch (Exception ex)
-            {
-                this.logger.LogError("Unexpected error occured in printer receive loop");
-                this.logger.LogError(ex.ToString());
-            }
-            finally
-            {
-                await this.DisconnectAsync(CancellationToken.None);
+
+                this.HandleLine(line);
             }
         }
 
-        private async Task HandleLine(string line)
+        private void HandleReceiveLoopCompleted(Task task)
         {
-            this.logger.LogTrace("RECV: " + line);
+            if (task.IsCompletedSuccessfully)
+            {
+                this.logger.LogDebug("Receive Loop task completed");
+            }
+            else if (task.IsCanceled)
+            {
+                this.logger.LogWarning("Receive Loop task canceled");
+            }
+            else if (task.IsFaulted)
+            {
+                this.logger.LogError("Receive Loop task errored");
+                this.logger.LogError(task.Exception!.ToString());
+            }
+        }
 
+        private void HandleLine(string line)
+        {
             if (line.StartsWith("Error:"))
             {
                 string errorMessage = line[6..];
 
                 if (errorMessage == "Printer halted. kill() called!")
                 {
-                    await this.DisconnectAsync(CancellationToken.None);
+                    throw new Exception("Printer halted");
                 }
 
                 this.logger.LogError(errorMessage);
@@ -327,13 +385,12 @@ namespace Print3DCloud.Client.Printers
             }
             else if (line.StartsWith("Resend:"))
             {
-                int lineNumber = int.Parse(line[7..].Trim());
-                this.logger.LogWarning("Printer requested resend for line number " + lineNumber);
-                this.resendLastCommand = true;
+                this.resendLine = int.Parse(line[7..].Trim());
+                this.logger.LogWarning("Printer requested resend for line number " + this.resendLine);
             }
             else if (line.StartsWith(CommandExpectedResponse))
             {
-                this.sendNextCommand = true;
+                this.commandAcknowledgedSemaphore.Release();
             }
             else if (line.StartsWith("echo:"))
             {
