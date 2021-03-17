@@ -13,9 +13,9 @@ namespace Print3DCloud.Client
     {
         private const int BufferSize = 1024;
 
-        private readonly Decoder decoder;
-        private readonly byte[] buffer;
-        private readonly char[] charBuffer;
+        private Decoder decoder;
+        private byte[] buffer;
+        private char[] charBuffer;
 
         private int charPos;
         private int charLen;
@@ -26,13 +26,28 @@ namespace Print3DCloud.Client
         /// <param name="portName">The port to use (for example, COM1).</param>
         /// <param name="baudRate">The baud rate.</param>
         /// <param name="parity">One of the <see cref="Parity"/> values.</param>
-        /// <param name="encoding">An <see cref="Encoding"/>.</param>
-        public AsyncSerialPort(string portName, int baudRate, Parity parity, Encoding encoding)
+        public AsyncSerialPort(string portName, int baudRate, Parity parity)
             : base(portName, baudRate, parity)
         {
-            this.decoder = encoding.GetDecoder();
+            this.decoder = this.Encoding.GetDecoder();
             this.buffer = new byte[BufferSize];
-            this.charBuffer = new char[encoding.GetMaxCharCount(this.buffer.Length)];
+            this.charBuffer = new char[this.Encoding.GetMaxCharCount(this.buffer.Length)];
+        }
+
+        /// <summary>
+        /// Gets or sets the byte encoding for pre- and post-transmission conversion of text.
+        /// </summary>
+        public new Encoding Encoding
+        {
+            get => base.Encoding;
+            set
+            {
+                base.Encoding = value;
+
+                this.decoder = value.GetDecoder();
+                this.buffer = new byte[BufferSize];
+                this.charBuffer = new char[value.GetMaxCharCount(this.buffer.Length)];
+            }
         }
 
         /// <summary>
@@ -82,6 +97,10 @@ namespace Print3DCloud.Client
 
             while (this.IsOpen && this.charLen == 0)
             {
+                // ReadAsync on a SerialStream (what BaseStream is internally) ignores the CancellationToken passed to it, so the only way to stop
+                // it once it started is to close BaseStream via this.Close() or this.Dispose()
+                // see https://github.com/dotnet/runtime/blob/main/src/libraries/System.IO.Ports/src/System/IO/Ports/SerialPort.cs
+                // and https://github.com/dotnet/runtime/blob/main/src/libraries/System.IO.Ports/src/System/IO/Ports/SerialStream.cs
                 int readCount = await this.BaseStream.ReadAsync(new Memory<byte>(this.buffer, 0, this.buffer.Length));
                 this.charLen = this.decoder.GetChars(this.buffer, 0, readCount, this.charBuffer, 0, false);
             }

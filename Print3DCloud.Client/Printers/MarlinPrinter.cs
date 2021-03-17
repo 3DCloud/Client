@@ -69,13 +69,6 @@ namespace Print3DCloud.Client.Printers
         public string Identifier => this.PortName;
 
         /// <summary>
-        /// Gets the encoding used when communicating with the printer.
-        /// </summary>
-        // I'm not sure if Marlin supports a more modern encoding, but considering all G-code fits
-        // in standard ASCII and we trim comments, we can just default to ASCII here for simplicity's sake
-        public Encoding Encoding => Encoding.ASCII;
-
-        /// <summary>
         /// Gets the name of the serial port.
         /// </summary>
         public string PortName { get; }
@@ -119,7 +112,7 @@ namespace Print3DCloud.Client.Printers
 
             this.globalCancellationTokenSource = new CancellationTokenSource();
 
-            this.serialPort = new AsyncSerialPort(this.PortName, this.BaudRate, this.Parity, this.Encoding)
+            this.serialPort = new AsyncSerialPort(this.PortName, this.BaudRate, this.Parity)
             {
                 RtsEnable = true,
                 DtrEnable = true,
@@ -223,7 +216,7 @@ namespace Print3DCloud.Client.Printers
             }
 
             string line = $"N{this.currentLineNumber} {CommentRegex.Replace(command, string.Empty).Trim()} N{this.currentLineNumber}";
-            line += "*" + this.GetCommandChecksum(line);
+            line += "*" + this.GetCommandChecksum(line, this.serialPort.Encoding);
 
             this.resendLine = this.currentLineNumber;
 
@@ -269,10 +262,11 @@ namespace Print3DCloud.Client.Printers
         /// Based on Marlin's source code: https://github.com/MarlinFirmware/Marlin/blob/8e1ea6a2fa1b90a58b4257eec9fbc2923adda680/Marlin/src/gcode/queue.cpp#L485.
         /// </summary>
         /// <param name="command">The command for which to generate a checksum.</param>
+        /// <param name="encoding">The encoding to use when converting the command to a byte array.</param>
         /// <returns>The command's checksum.</returns>
-        private byte GetCommandChecksum(string command)
+        private byte GetCommandChecksum(string command, Encoding encoding)
         {
-            byte[] bytes = Encoding.ASCII.GetBytes(command);
+            byte[] bytes = encoding.GetBytes(command);
             byte checksum = 0;
 
             foreach (byte b in bytes)
