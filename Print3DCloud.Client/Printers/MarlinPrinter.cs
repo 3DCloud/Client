@@ -8,7 +8,6 @@ using System.Text.RegularExpressions;
 using System.Threading;
 using System.Threading.Tasks;
 using Microsoft.Extensions.Logging;
-using Print3DCloud.Tasks;
 
 namespace Print3DCloud.Client.Printers
 {
@@ -28,7 +27,7 @@ namespace Print3DCloud.Client.Printers
 
         private readonly ILogger<MarlinPrinter> logger;
         private readonly SerialPort serialPort;
-        private readonly SequentialTaskRunner commandQueue;
+        private readonly SemaphoreSlim semaphore;
 
         private CancellationTokenSource? cancellationTokenSource;
         private StreamReader? reader;
@@ -59,12 +58,22 @@ namespace Print3DCloud.Client.Printers
                 NewLine = "\n",
             };
 
-            this.commandQueue = new SequentialTaskRunner();
+            this.semaphore = new SemaphoreSlim(1);
             this.hotendTemperatures = new List<TemperatureSensor>();
         }
 
         /// <inheritdoc/>
         public string Identifier => this.serialPort.PortName;
+
+        /// <inheritdoc/>
+        public PrinterState State => new PrinterState
+        {
+            IsConnected = this.IsConnected,
+            IsPrinting = false,
+            ActiveHotendTemperature = this.activeHotendTemperature,
+            HotendTemperatures = this.hotendTemperatures.ToArray(),
+            BuildPlateTemperature = this.bedTemperature,
+        };
 
         /// <summary>
         /// Gets a value indicating whether or not this printer is currently connected.
@@ -115,12 +124,46 @@ namespace Print3DCloud.Client.Printers
         /// <inheritdoc/>
         public async Task SendCommandAsync(string command)
         {
-            while (this.commandQueue.TaskCount > 100)
+            if (!this.serialPort.IsOpen || this.writer == null)
             {
-                await Task.Delay(25);
+                throw new InvalidOperationException("Connection with printer lost");
             }
 
-            await this.commandQueue.Enqueue(() => this.SendCommandInternalAsync(command));
+            await this.semaphore.WaitAsync();
+
+            // reset current line number if necessary
+            if (this.currentLineNumber <= 0 || this.currentLineNumber == long.MaxValue)
+            {
+                this.sendNextCommand = false;
+                await this.WriteLineAsync("M110 N0");
+
+                while (!this.sendNextCommand)
+                {
+                    await Task.Delay(25);
+                }
+
+                this.currentLineNumber = 1;
+            }
+
+            string line = $"N{this.currentLineNumber} {CommentRegex.Replace(command, string.Empty)} N{this.currentLineNumber}";
+            line += "*" + this.GetCommandChecksum(line);
+
+            this.resendLastCommand = true;
+
+            while (!this.sendNextCommand || this.resendLastCommand)
+            {
+                if (this.resendLastCommand)
+                {
+                    this.sendNextCommand = false;
+                    this.resendLastCommand = false;
+                    await this.WriteLineAsync(line);
+                }
+
+                await Task.Delay(10);
+            }
+
+            this.currentLineNumber++;
+            this.semaphore.Release();
         }
 
         /// <inheritdoc/>
@@ -161,22 +204,9 @@ namespace Print3DCloud.Client.Printers
         }
 
         /// <inheritdoc/>
-        public Task AbortPrintAsync()
+        public Task AbortPrintAsync(CancellationToken cancellationToken)
         {
             throw new NotImplementedException();
-        }
-
-        /// <inheritdoc/>
-        public PrinterState GetState()
-        {
-            return new PrinterState
-            {
-                IsConnected = this.IsConnected,
-                IsPrinting = false,
-                ActiveHotendTemperature = this.activeHotendTemperature,
-                HotendTemperatures = this.hotendTemperatures.ToArray(),
-                BuildPlateTemperature = this.bedTemperature,
-            };
         }
 
         /// <inheritdoc/>
@@ -188,53 +218,6 @@ namespace Print3DCloud.Client.Printers
             this.writer?.Dispose();
 
             this.serialPort.Dispose();
-        }
-
-        /// <summary>
-        /// Sends a command along with a line number and checksum to ensure the right command is received and run.
-        /// Do not call this directly - only through <see cref="SequentialTaskRunner"/>! It guarantees this will be called sequentially.
-        /// </summary>
-        /// <param name="command">The G-code command to run.</param>
-        /// <returns>A task that completes once the command has been sent and acknowledged by the printer.</returns>
-        private async Task SendCommandInternalAsync(string command)
-        {
-            if (!this.serialPort.IsOpen || this.writer == null)
-            {
-                throw new InvalidOperationException("Connection with printer lost");
-            }
-
-            // reset current line number if necessary
-            if (this.currentLineNumber <= 0 || this.currentLineNumber == long.MaxValue)
-            {
-                this.sendNextCommand = false;
-                await this.WriteLineAsync("M110 N0");
-
-                while (!this.sendNextCommand)
-                {
-                    await Task.Delay(25);
-                }
-
-                this.currentLineNumber = 1;
-            }
-
-            string line = $"N{this.currentLineNumber} {CommentRegex.Replace(command, string.Empty)} N{this.currentLineNumber}";
-            line += "*" + this.GetCommandChecksum(line);
-
-            this.resendLastCommand = true;
-
-            while (!this.sendNextCommand || this.resendLastCommand)
-            {
-                if (this.resendLastCommand)
-                {
-                    this.sendNextCommand = false;
-                    this.resendLastCommand = false;
-                    await this.WriteLineAsync(line);
-                }
-
-                await Task.Delay(10);
-            }
-
-            this.currentLineNumber++;
         }
 
         /// <summary>

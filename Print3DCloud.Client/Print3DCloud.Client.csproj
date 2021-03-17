@@ -25,7 +25,6 @@
 
   <ItemGroup>
     <ProjectReference Include="..\ActionCableSharp\ActionCableSharp.csproj" />
-    <ProjectReference Include="..\Print3DCloud.Tasks\Print3DCloud.Tasks.csproj" />
   </ItemGroup>
 
 </Project>

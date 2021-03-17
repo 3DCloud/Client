@@ -49,7 +49,7 @@ namespace ActionCableSharp
         /// <returns>A <see cref="Task"/> that completes once the message has been sent.</returns>
         public Task Perform(ActionMessage data, CancellationToken cancellationToken)
         {
-            return this.client.EnqueueCommand("message", this.Identifier, cancellationToken, data);
+            return this.client.SendMessageAsync("message", this.Identifier, cancellationToken, data);
         }
 
         /// <summary>

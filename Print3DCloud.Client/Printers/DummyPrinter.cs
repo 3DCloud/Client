@@ -19,6 +19,19 @@ namespace Print3DCloud.Client.Printers
         public string Identifier { get; } = Guid.NewGuid().ToString();
 
         /// <inheritdoc/>
+        public PrinterState State => new PrinterState
+        {
+            IsConnected = this.connected,
+            IsPrinting = this.printing,
+            HotendTemperatures = new[]
+            {
+                new TemperatureSensor { Current = 210 + this.random.NextDouble() * 0.5 },
+                new TemperatureSensor { Current = 190 + this.random.NextDouble() * 0.5 },
+            },
+            BuildPlateTemperature = new TemperatureSensor { Current = 60 + this.random.NextDouble() * 0.5 },
+        };
+
+        /// <inheritdoc/>
         public Task ConnectAsync(CancellationToken cancellationToken)
         {
             this.connected = true;
@@ -46,26 +59,10 @@ namespace Print3DCloud.Client.Printers
         }
 
         /// <inheritdoc/>
-        public Task AbortPrintAsync()
+        public Task AbortPrintAsync(CancellationToken cancellationToken)
         {
             this.printing = false;
             return Task.CompletedTask;
-        }
-
-        /// <inheritdoc/>
-        public PrinterState GetState()
-        {
-            return new PrinterState
-            {
-                IsConnected = this.connected,
-                IsPrinting = this.printing,
-                HotendTemperatures = new[]
-                {
-                    new TemperatureSensor { Current = 210 + this.random.NextDouble() * 0.5 },
-                    new TemperatureSensor { Current = 190 + this.random.NextDouble() * 0.5 },
-                },
-                BuildPlateTemperature = new TemperatureSensor { Current = 60 + this.random.NextDouble() * 0.5 },
-            };
         }
 
         /// <inheritdoc/>

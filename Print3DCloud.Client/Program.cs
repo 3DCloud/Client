@@ -37,7 +37,7 @@ namespace Print3DCloud.Client
 
             logger = loggerFactory.CreateLogger<Program>();
 
-            using var printer = new MarlinPrinter("COM9", 115200);
+            using var printer = new MarlinPrinter(args[0], 115200);
             using var client = new ActionCableClient(new Uri("ws://localhost:3000/ws/"), "3DCloud-Client");
 
             await printer.ConnectAsync(CancellationToken.None);
@@ -45,7 +45,7 @@ namespace Print3DCloud.Client
 
             await printer.SendCommandAsync("G28 X Y");
 
-            _ = printer.StartPrintAsync(File.OpenRead(Path.Combine(Directory.GetCurrentDirectory(), "test.gcode")), CancellationToken.None);
+            _ = printer.StartPrintAsync(File.OpenRead(Path.Combine(Directory.GetCurrentDirectory(), args[1])), CancellationToken.None);
 
             ActionCableSubscription subscription = await client.Subscribe(new ClientIdentifier(Guid.NewGuid(), GetRandomBytes()), CancellationToken.None);
             subscription.MessageReceived += OnMessageReceived;
@@ -54,7 +54,7 @@ namespace Print3DCloud.Client
             {
                 if (client.State == ClientState.Connected)
                 {
-                    await subscription.Perform(new PrinterStateMessage(new Dictionary<string, PrinterState> { { printer.Identifier, printer.GetState() } }), CancellationToken.None);
+                    await subscription.Perform(new PrinterStateMessage(new Dictionary<string, PrinterState> { { printer.Identifier, printer.State } }), CancellationToken.None);
                 }
 
                 await Task.Delay(1000);

@@ -1,0 +1,8 @@
+{
+  "profiles": {
+    "Print3DCloud.Client": {
+      "commandName": "Project",
+      "commandLineArgs": "COM9 \"Small 3DBenchy.gcode\""
+    }
+  }
+}

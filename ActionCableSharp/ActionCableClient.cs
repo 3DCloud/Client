@@ -8,7 +8,6 @@ using System.Threading;
 using System.Threading.Tasks;
 using ActionCableSharp.Internal;
 using Microsoft.Extensions.Logging;
-using Print3DCloud.Tasks;
 
 namespace ActionCableSharp
 {
@@ -23,7 +22,7 @@ namespace ActionCableSharp
         private readonly ILogger<ActionCableClient> logger;
         private readonly IWebSocketFactory webSocketFactory;
         private readonly List<ActionCableSubscription> subscriptions;
-        private readonly SequentialTaskRunner sendTaskRunner;
+        private readonly SemaphoreSlim semaphore;
 
         private IWebSocket? webSocket;
         private CancellationTokenSource? loopCancellationTokenSource;
@@ -67,7 +66,7 @@ namespace ActionCableSharp
             this.logger = Logging.LoggerFactory.CreateLogger<ActionCableClient>();
             this.webSocketFactory = webSocketFactory;
             this.subscriptions = new List<ActionCableSubscription>();
-            this.sendTaskRunner = new SequentialTaskRunner();
+            this.semaphore = new SemaphoreSlim(1);
         }
 
         /// <summary>
@@ -130,7 +129,7 @@ namespace ActionCableSharp
 
             try
             {
-                await this.EnqueueCommand("subscribe", identifier, cancellationToken);
+                await this.SendMessageAsync("subscribe", identifier, cancellationToken);
             }
             catch (WebSocketException ex)
             {
@@ -155,7 +154,7 @@ namespace ActionCableSharp
         /// <param name="cancellationToken">A <see cref="CancellationToken"/> used to propagate notification that the operation should be canceled.</param>
         /// <param name="data">Optional additional data.</param>
         /// <returns>A <see cref="Task"/> that completes once the message has been sent to the server.</returns>
-        internal Task EnqueueCommand(string command, Identifier identifier, CancellationToken cancellationToken, object? data = null)
+        internal async Task SendMessageAsync(string command, Identifier identifier, CancellationToken cancellationToken, object? data = null)
         {
             var message = new ActionCableOutgoingMessage
             {
@@ -164,7 +163,28 @@ namespace ActionCableSharp
                 Data = data != null ? JsonSerializer.Serialize(data, this.JsonSerializerOptions) : null,
             };
 
-            return this.sendTaskRunner.Enqueue(() => this.SendMessage(message, cancellationToken));
+            if (this.webSocket?.IsConnected != true)
+            {
+                throw new InvalidOperationException("WebSocket is not connected");
+            }
+
+            using var stream = new MemoryStream();
+
+            await JsonSerializer.SerializeAsync(stream, message, this.JsonSerializerOptions, cancellationToken).ConfigureAwait(false);
+
+            stream.Position = 0;
+
+            byte[] buffer = new byte[BufferSize];
+            int bytesRead;
+
+            await this.semaphore.WaitAsync();
+
+            while ((bytesRead = await stream.ReadAsync(buffer, cancellationToken)) > 0)
+            {
+                await this.webSocket.SendAsync(new ArraySegment<byte>(buffer, 0, bytesRead), WebSocketMessageType.Text, stream.Position >= stream.Length - 1, cancellationToken).ConfigureAwait(false);
+            }
+
+            this.semaphore.Release();
         }
 
         /// <summary>
@@ -175,7 +195,7 @@ namespace ActionCableSharp
         /// <returns>A <see cref="Task"/> that completes once the unsubscription request has been sent to the server.</returns>
         internal async Task Unsubscribe(ActionCableSubscription subscription, CancellationToken cancellationToken)
         {
-            await this.EnqueueCommand("unsubscribe", subscription.Identifier, cancellationToken);
+            await this.SendMessageAsync("unsubscribe", subscription.Identifier, cancellationToken);
             this.subscriptions.Remove(subscription);
         }
 
@@ -265,7 +285,7 @@ namespace ActionCableSharp
                     // these run sequentially so might as well await each one individually
                     foreach (var subscription in this.subscriptions)
                     {
-                        await this.EnqueueCommand("subscribe", subscription.Identifier, cancellationToken);
+                        await this.SendMessageAsync("subscribe", subscription.Identifier, cancellationToken);
                     }
                 }
                 catch (WebSocketException)
@@ -275,28 +295,6 @@ namespace ActionCableSharp
                     await Task.Delay(reconnectDelay, cancellationToken).ConfigureAwait(false);
                     reconnectDelayIndex = Math.Min(reconnectDelayIndex + 1, ReconnectDelays.Length - 1);
                 }
-            }
-        }
-
-        private async Task SendMessage(ActionCableOutgoingMessage message, CancellationToken cancellationToken)
-        {
-            if (this.webSocket?.IsConnected != true)
-            {
-                throw new InvalidOperationException("WebSocket is not connected");
-            }
-
-            using var stream = new MemoryStream();
-
-            await JsonSerializer.SerializeAsync(stream, message, this.JsonSerializerOptions, cancellationToken).ConfigureAwait(false);
-
-            stream.Position = 0;
-
-            byte[] buffer = new byte[BufferSize];
-            int bytesRead;
-
-            while ((bytesRead = await stream.ReadAsync(buffer, cancellationToken)) > 0)
-            {
-                await this.webSocket.SendAsync(new ArraySegment<byte>(buffer, 0, bytesRead), WebSocketMessageType.Text, stream.Position >= stream.Length - 1, cancellationToken).ConfigureAwait(false);
             }
         }
 
