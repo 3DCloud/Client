@@ -120,11 +120,12 @@ namespace ActionCableSharp
         /// Subscribes to a specific Action Cable channel.
         /// </summary>
         /// <param name="identifier">Identifier for the channel.</param>
+        /// <param name="receiver">The <see cref="MessageReceiver"/> that will receive messages.</param>
         /// <param name="cancellationToken">A <see cref="CancellationToken"/> used to propagate notification that the operation should be canceled.</param>
         /// <returns>A reference to the <see cref="ActionCableSubscription"/> linked to the specified <paramref name="identifier"/>.</returns>
-        public async Task<ActionCableSubscription> Subscribe(Identifier identifier, CancellationToken cancellationToken)
+        public async Task<ActionCableSubscription> Subscribe(Identifier identifier, MessageReceiver receiver, CancellationToken cancellationToken)
         {
-            var subscription = new ActionCableSubscription(this, identifier);
+            var subscription = new ActionCableSubscription(this, identifier, receiver);
             this.subscriptions.Add(subscription);
 
             try
@@ -354,8 +355,8 @@ namespace ActionCableSharp
                     this.shouldReconnectAfterClose = message.Reconnect == true;
                     break;
 
-                case MessageType.Confirmation:
-                case MessageType.Rejection:
+                case MessageType.ConfirmSubscription:
+                case MessageType.RejectSubscription:
                 case MessageType.None:
                     foreach (var subscription in this.subscriptions)
                     {

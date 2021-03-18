@@ -3,7 +3,7 @@
 namespace ActionCableSharp.Internal
 {
     /// <summary>
-    /// The type of message represented by an instance of <see cref="ActionCableMessage"/>.
+    /// The type of message represented by an instance of <see cref="ActionCableIncomingMessage"/>.
     /// </summary>
     internal enum MessageType
     {
@@ -30,13 +30,11 @@ namespace ActionCableSharp.Internal
         /// <summary>
         /// The message confirms a subscription.
         /// </summary>
-        [EnumMember(Value = "confirm_subscription")]
-        Confirmation,
+        ConfirmSubscription,
 
         /// <summary>
         /// The message rejects a subscription.
         /// </summary>
-        [EnumMember(Value = "reject_subscription")]
-        Rejection,
+        RejectSubscription,
     }
 }

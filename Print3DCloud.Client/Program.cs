@@ -54,8 +54,8 @@ namespace Print3DCloud.Client
 
             Task printTask = printer.StartPrintAsync(File.OpenRead(Path.Combine(Directory.GetCurrentDirectory(), args[1])), cts.Token).ContinueWith(HandlePrintTaskCompleted);
 
-            ActionCableSubscription subscription = await client.Subscribe(new ClientIdentifier(config.Guid, config.Key), CancellationToken.None);
-            subscription.MessageReceived += OnMessageReceived;
+            var obj = new ClientMessageReceiver(config);
+            ActionCableSubscription subscription = await client.Subscribe(new ClientIdentifier(config.Guid, config.Key), obj, CancellationToken.None);
 
             while (!Console.KeyAvailable)
             {
@@ -71,22 +71,6 @@ namespace Print3DCloud.Client
             await printTask;
             await printer.DisconnectAsync();
             await client.DisconnectAsync(CancellationToken.None);
-        }
-
-        private static async void OnMessageReceived(ActionCableMessage message)
-        {
-            if (config == null) return;
-            if (!message.JsonElement.TryGetProperty("action", out JsonElement value)) return;
-
-            string? action = value.GetString();
-
-            switch (action)
-            {
-                case "auth_key":
-                    config.Key = message.JsonElement.GetProperty("key").GetString();
-                    await config.SaveAsync(CancellationToken.None);
-                    break;
-            }
         }
 
         private static void HandlePrintTaskCompleted(Task task)
