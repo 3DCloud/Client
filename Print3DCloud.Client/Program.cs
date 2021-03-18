@@ -1,11 +1,13 @@
 ﻿using System;
 using System.Collections.Generic;
 using System.IO;
+using System.Text.Json;
 using System.Threading;
 using System.Threading.Tasks;
 using ActionCableSharp;
 using Microsoft.Extensions.Logging;
 using Print3DCloud.Client.ActionCable;
+using Print3DCloud.Client.Configuration;
 using Print3DCloud.Client.Printers;
 
 namespace Print3DCloud.Client
@@ -15,8 +17,8 @@ namespace Print3DCloud.Client
     /// </summary>
     internal class Program
     {
-        private static readonly Random Random = new Random();
         private static ILogger<Program>? logger;
+        private static Config? config;
 
         /// <summary>
         /// This is the program's entry point. It is the first thing that runs when the program is started.
@@ -37,11 +39,14 @@ namespace Print3DCloud.Client
 
             logger = loggerFactory.CreateLogger<Program>();
 
+            config = await Config.LoadAsync(CancellationToken.None);
+            await config.SaveAsync(CancellationToken.None);
+
             using var printer = new MarlinPrinter(args[0], 115200);
             using var client = new ActionCableClient(new Uri("ws://localhost:3000/ws/"), "3DCloud-Client");
 
-            await printer.ConnectAsync(CancellationToken.None);
             await client.ConnectAsync(CancellationToken.None);
+            await printer.ConnectAsync(CancellationToken.None);
 
             await printer.SendCommandAsync("G28", CancellationToken.None);
 
@@ -49,12 +54,12 @@ namespace Print3DCloud.Client
 
             Task printTask = printer.StartPrintAsync(File.OpenRead(Path.Combine(Directory.GetCurrentDirectory(), args[1])), cts.Token).ContinueWith(HandlePrintTaskCompleted);
 
-            ActionCableSubscription subscription = await client.Subscribe(new ClientIdentifier(Guid.NewGuid(), GetRandomBytes()), CancellationToken.None);
+            ActionCableSubscription subscription = await client.Subscribe(new ClientIdentifier(config.Guid, config.Key), CancellationToken.None);
             subscription.MessageReceived += OnMessageReceived;
 
             while (!Console.KeyAvailable)
             {
-                if (client.State == ClientState.Connected)
+                if (client.State == ClientState.Connected && subscription?.State == SubscriptionState.Subscribed)
                 {
                     await subscription.Perform(new PrinterStateMessage(new Dictionary<string, PrinterState> { { printer.Identifier, printer.State } }), CancellationToken.None);
                 }
@@ -68,16 +73,20 @@ namespace Print3DCloud.Client
             await client.DisconnectAsync(CancellationToken.None);
         }
 
-        private static string GetRandomBytes()
+        private static async void OnMessageReceived(ActionCableMessage message)
         {
-            byte[] buffer = new byte[16];
-            Random.NextBytes(buffer);
-            return Convert.ToHexString(buffer);
-        }
+            if (config == null) return;
+            if (!message.JsonElement.TryGetProperty("action", out JsonElement value)) return;
 
-        private static void OnMessageReceived(ActionCableMessage message)
-        {
-            logger?.LogInformation(message.AsObject<SampleMessage>()?.SampleProperty);
+            string? action = value.GetString();
+
+            switch (action)
+            {
+                case "auth_key":
+                    config.Key = message.JsonElement.GetProperty("key").GetString();
+                    await config.SaveAsync(CancellationToken.None);
+                    break;
+            }
         }
 
         private static void HandlePrintTaskCompleted(Task task)

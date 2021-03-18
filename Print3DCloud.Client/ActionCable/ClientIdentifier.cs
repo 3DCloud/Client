@@ -13,7 +13,7 @@ namespace Print3DCloud.Client.ActionCable
         /// </summary>
         /// <param name="guid">GUID that identifies this client.</param>
         /// <param name="key">The key used to authenticate the client when connecting to the server.</param>
-        public ClientIdentifier(Guid guid, string key)
+        public ClientIdentifier(Guid guid, string? key)
             : base("ClientsChannel")
         {
             this.Guid = guid;
@@ -28,7 +28,7 @@ namespace Print3DCloud.Client.ActionCable
         /// <summary>
         /// Gets the key used to authenticate the client when connecting to the server.
         /// </summary>
-        public string Key { get; }
+        public string? Key { get; }
 
         /// <inheritdoc/>
         public override bool Equals(Identifier? other)

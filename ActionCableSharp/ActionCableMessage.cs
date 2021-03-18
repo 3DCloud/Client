@@ -9,19 +9,23 @@ namespace ActionCableSharp
     /// </summary>
     public class ActionCableMessage
     {
-        private readonly JsonElement message;
         private readonly JsonSerializerOptions? serializerOptions;
 
         /// <summary>
         /// Initializes a new instance of the <see cref="ActionCableMessage"/> class.
         /// </summary>
-        /// <param name="message">The <see cref="JsonElement"/> containing the serialized message data.</param>
+        /// <param name="jsonElement">The <see cref="JsonElement"/> containing the message data.</param>
         /// <param name="serializerOptions"><see cref="JsonSerializerOptions"/> to use when deserializing the data into a specific class.</param>
-        internal ActionCableMessage(JsonElement message, JsonSerializerOptions? serializerOptions)
+        internal ActionCableMessage(JsonElement jsonElement, JsonSerializerOptions? serializerOptions)
         {
-            this.message = message;
+            this.JsonElement = jsonElement;
             this.serializerOptions = serializerOptions;
         }
+
+        /// <summary>
+        /// Gets the <see cref="JsonElement"/> containing the raw message.
+        /// </summary>
+        public JsonElement JsonElement { get; }
 
         /// <summary>
         /// Deserializes the message into an object of type <typeparamref name="T"/>.
@@ -49,7 +53,7 @@ namespace ActionCableSharp
 
             using (var writer = new Utf8JsonWriter(bufferWriter))
             {
-                this.message.WriteTo(writer);
+                this.JsonElement.WriteTo(writer);
             }
 
             return bufferWriter.WrittenSpan;
