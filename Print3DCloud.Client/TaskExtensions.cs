@@ -19,7 +19,7 @@ namespace Print3DCloud.Client
                 return Task.CompletedTask;
             }
 
-            return task.ContinueWith(t => Task.CompletedTask, TaskContinuationOptions.RunContinuationsAsynchronously).Unwrap();
+            return task.ContinueWith(t => { }, TaskContinuationOptions.RunContinuationsAsynchronously);
         }
     }
 }
