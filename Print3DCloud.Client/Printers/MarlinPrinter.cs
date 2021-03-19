@@ -215,7 +215,16 @@ namespace Print3DCloud.Client.Printers
                 this.currentLineNumber = 1;
             }
 
-            string line = $"N{this.currentLineNumber} {CommentRegex.Replace(command, string.Empty).Trim()} N{this.currentLineNumber}";
+            int newLineIndex = command.IndexOf('\n');
+
+            if (newLineIndex >= 0)
+            {
+                command = command.Substring(0, newLineIndex);
+                this.logger.LogInformation($"Command has multiple lines; only the first one ('{command}') will be sent");
+            }
+
+            command = CommentRegex.Replace(command, string.Empty).Trim();
+            string line = $"N{this.currentLineNumber} {command} N{this.currentLineNumber}";
             line += "*" + this.GetCommandChecksum(line, this.serialPort.Encoding);
 
             this.resendLine = this.currentLineNumber;

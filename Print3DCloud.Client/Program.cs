@@ -52,7 +52,7 @@ namespace Print3DCloud.Client
 
             var cts = new CancellationTokenSource();
 
-            Task printTask = printer.StartPrintAsync(File.OpenRead(Path.Combine(Directory.GetCurrentDirectory(), args[1])), cts.Token).ContinueWith(HandlePrintTaskCompleted);
+            Task printTask = printer.StartPrintAsync(File.OpenRead(Path.Join(Directory.GetCurrentDirectory(), args[1])), cts.Token).ContinueWith(HandlePrintTaskCompleted);
 
             var obj = new ClientMessageReceiver(config);
             ActionCableSubscription subscription = await client.Subscribe(new ClientIdentifier(config.Guid, config.Key), obj, CancellationToken.None);
