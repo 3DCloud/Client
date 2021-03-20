@@ -59,13 +59,6 @@ namespace Print3DCloud.Client.Printers
         }
 
         /// <inheritdoc/>
-        public Task AbortPrintAsync(CancellationToken cancellationToken)
-        {
-            this.printing = false;
-            return Task.CompletedTask;
-        }
-
-        /// <inheritdoc/>
         public void Dispose()
         {
             this.connected = false;

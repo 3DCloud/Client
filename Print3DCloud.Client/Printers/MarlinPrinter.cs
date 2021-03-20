@@ -27,11 +27,10 @@ namespace Print3DCloud.Client.Printers
         private static readonly Regex TemperaturesRegex = new Regex(@"(?<sensor>B|T\d?):(?<current>[\d\.]+) \/(?<target>[\d\.]+)");
 
         private readonly ILogger<MarlinPrinter> logger;
-        private readonly SemaphoreSlim sendCommandSemaphore;
-        private readonly SemaphoreSlim commandAcknowledgedSemaphore;
+        private readonly AutoResetEvent sendCommandResetEvent;
+        private readonly AutoResetEvent commandAcknowledgedResetEvent;
 
         private CancellationTokenSource globalCancellationTokenSource;
-        private CancellationTokenSource printCancellationTokenSource;
         private AsyncSerialPort? serialPort;
 
         private Task? temperaturePollingTask;
@@ -58,11 +57,10 @@ namespace Print3DCloud.Client.Printers
             this.Parity = parity;
 
             this.logger = Logging.LoggerFactory.CreateLogger<MarlinPrinter>();
-            this.sendCommandSemaphore = new SemaphoreSlim(1);
-            this.commandAcknowledgedSemaphore = new SemaphoreSlim(1);
+            this.sendCommandResetEvent = new AutoResetEvent(true);
+            this.commandAcknowledgedResetEvent = new AutoResetEvent(true);
             this.hotendTemperatures = new List<TemperatureSensor>();
             this.globalCancellationTokenSource = new CancellationTokenSource();
-            this.printCancellationTokenSource = new CancellationTokenSource();
         }
 
         /// <inheritdoc/>
@@ -130,7 +128,7 @@ namespace Print3DCloud.Client.Printers
                 line = await this.ReadLineAsync();
             }
 
-            await this.WriteLineAsync(HelloCommand, cancellationToken);
+            await this.WriteLineAsync(HelloCommand);
 
             while (line != CommandExpectedResponse)
             {
@@ -144,11 +142,20 @@ namespace Print3DCloud.Client.Printers
         }
 
         /// <inheritdoc/>
-        public Task SendCommandAsync(string command, CancellationToken cancellationToken)
+        public async Task SendCommandAsync(string command, CancellationToken cancellationToken)
         {
             CancellationTokenSource commandTokenSource = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken, this.globalCancellationTokenSource.Token);
 
-            return this.SendCommandInternalAsync(command, commandTokenSource.Token);
+            await this.sendCommandResetEvent.WaitOneAsync(cancellationToken);
+
+            try
+            {
+                await this.SendCommandInternalAsync(command, commandTokenSource.Token);
+            }
+            finally
+            {
+                this.sendCommandResetEvent.Set();
+            }
         }
 
         /// <inheritdoc/>
@@ -177,18 +184,9 @@ namespace Print3DCloud.Client.Printers
                 throw new InvalidOperationException("Already printing something");
             }
 
-            this.printCancellationTokenSource = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken, this.globalCancellationTokenSource.Token);
+            CancellationTokenSource printCancellationTokenSource = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken, this.globalCancellationTokenSource.Token);
 
-            return this.printTask = this.StartPrintInternalAsync(fileStream, this.printCancellationTokenSource.Token);
-        }
-
-        /// <inheritdoc/>
-        public async Task AbortPrintAsync(CancellationToken cancellationToken)
-        {
-            if (!this.IsPrinting) throw new InvalidOperationException("No print is currently running.");
-
-            this.printCancellationTokenSource?.Cancel();
-            await this.printTask.WaitForCompletionAsync();
+            return this.printTask = this.StartPrintInternalAsync(fileStream, printCancellationTokenSource.Token);
         }
 
         /// <inheritdoc/>
@@ -204,16 +202,17 @@ namespace Print3DCloud.Client.Printers
                 throw new InvalidOperationException("Connection with printer lost");
             }
 
-            await this.sendCommandSemaphore.WaitAsync(cancellationToken);
-
             // reset current line number if necessary
             if (this.currentLineNumber <= 0 || this.currentLineNumber == long.MaxValue)
             {
-                await this.WriteLineAsync("M110 N0", cancellationToken);
-                await this.commandAcknowledgedSemaphore.WaitAsync(cancellationToken);
+                // we don't allow cancelling since not waiting for acknowledgement can make us enter a broken state
+                await this.commandAcknowledgedResetEvent.WaitOneAsync(CancellationToken.None);
+                await this.WriteLineAsync("M110 N0");
 
                 this.currentLineNumber = 1;
             }
+
+            cancellationToken.ThrowIfCancellationRequested();
 
             int newLineIndex = command.IndexOf('\n');
 
@@ -231,6 +230,8 @@ namespace Print3DCloud.Client.Printers
 
             while (this.resendLine > 0)
             {
+                cancellationToken.ThrowIfCancellationRequested();
+
                 if (this.resendLine != this.currentLineNumber)
                 {
                     throw new InvalidOperationException($"Printer requested line {this.resendLine} but we last sent {this.currentLineNumber}");
@@ -238,12 +239,12 @@ namespace Print3DCloud.Client.Printers
 
                 this.resendLine = 0;
 
-                await this.WriteLineAsync(line, cancellationToken);
-                await this.commandAcknowledgedSemaphore.WaitAsync(cancellationToken);
+                // same as above
+                await this.commandAcknowledgedResetEvent.WaitOneAsync(CancellationToken.None);
+                await this.WriteLineAsync(line);
             }
 
             this.currentLineNumber++;
-            this.sendCommandSemaphore.Release();
         }
 
         private async Task StartPrintInternalAsync(Stream fileStream, CancellationToken cancellationToken)
@@ -252,6 +253,8 @@ namespace Print3DCloud.Client.Printers
 
             while (this.IsConnected)
             {
+                cancellationToken.ThrowIfCancellationRequested();
+
                 string? line = await fileReader.ReadLineAsync();
 
                 if (line == null) break;
@@ -262,7 +265,7 @@ namespace Print3DCloud.Client.Printers
                     continue;
                 }
 
-                await this.SendCommandInternalAsync(line, cancellationToken);
+                await this.SendCommandAsync(line, cancellationToken);
             }
         }
 
@@ -300,7 +303,7 @@ namespace Print3DCloud.Client.Printers
             return line;
         }
 
-        private Task WriteLineAsync(string line, CancellationToken cancellationToken)
+        private Task WriteLineAsync(string line)
         {
             if (!this.IsConnected)
             {
@@ -309,14 +312,14 @@ namespace Print3DCloud.Client.Printers
 
             this.logger.LogTrace("SEND: " + line);
 
-            return this.serialPort.WriteLineAsync(line, cancellationToken);
+            return this.serialPort.WriteLineAsync(line);
         }
 
         private async Task TemperaturePolling()
         {
             while (this.IsConnected)
             {
-                await this.SendCommandInternalAsync(ReportTemperaturesCommand, this.globalCancellationTokenSource.Token);
+                await this.SendCommandAsync(ReportTemperaturesCommand, CancellationToken.None);
 
                 await Task.Delay(1000, this.globalCancellationTokenSource.Token);
             }
@@ -345,12 +348,12 @@ namespace Print3DCloud.Client.Printers
             {
                 string? line = await this.ReadLineAsync();
 
-                if (string.IsNullOrEmpty(line))
+                if (string.IsNullOrWhiteSpace(line))
                 {
                     continue;
                 }
 
-                this.HandleLine(line);
+                this.HandleLine(line.Trim());
             }
         }
 
@@ -393,11 +396,7 @@ namespace Print3DCloud.Client.Printers
             }
             else if (line.StartsWith(CommandExpectedResponse))
             {
-                this.commandAcknowledgedSemaphore.Release();
-            }
-            else if (line.StartsWith("echo:"))
-            {
-                this.logger.LogDebug(line[5..]);
+                this.commandAcknowledgedResetEvent.Set();
             }
 
             if (IsTemperatureLineRegex.IsMatch(line))

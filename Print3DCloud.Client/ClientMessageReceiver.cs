@@ -1,5 +1,4 @@
-﻿using System;
-using System.Text.Json;
+﻿using System.Text.Json;
 using ActionCableSharp;
 using Microsoft.Extensions.Logging;
 using Print3DCloud.Client.Configuration;

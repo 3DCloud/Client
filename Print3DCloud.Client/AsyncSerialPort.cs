@@ -82,12 +82,11 @@ namespace Print3DCloud.Client
         /// Writes a line to the serial port as an asynchronous operation.
         /// </summary>
         /// <param name="line">The line to write.</param>
-        /// <param name="cancellationToken">A <see cref="CancellationToken"/> used to propagate notification that the operation should be canceled.</param>
         /// <returns>A <see cref="Task"/> that completes once the line has been sent.</returns>
-        public async Task WriteLineAsync(string line, CancellationToken cancellationToken)
+        public async Task WriteLineAsync(string line)
         {
-            await this.BaseStream.WriteAsync(Encoding.ASCII.GetBytes(line + "\n"), cancellationToken);
-            await this.BaseStream.FlushAsync(cancellationToken);
+            await this.BaseStream.WriteAsync(Encoding.ASCII.GetBytes(line + "\n"));
+            await this.BaseStream.FlushAsync();
         }
 
         private async Task ReadBuffer()

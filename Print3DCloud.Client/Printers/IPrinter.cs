@@ -49,12 +49,5 @@ namespace Print3DCloud.Client.Printers
         /// <param name="cancellationToken">A <see cref="CancellationToken"/> used to propagate notification that the operation should be canceled.</param>
         /// <returns>A <see cref="Task"/> that completes once the print has been started.</returns>
         Task StartPrintAsync(Stream fileStream, CancellationToken cancellationToken);
-
-        /// <summary>
-        /// Aborts the currently running print.
-        /// </summary>
-        /// <param name="cancellationToken">A <see cref="CancellationToken"/> used to propagate notification that the operation should be canceled.</param>
-        /// <returns>A <see cref="Task"/> that completes once the print has been aborted.</returns>
-        Task AbortPrintAsync(CancellationToken cancellationToken);
     }
 }

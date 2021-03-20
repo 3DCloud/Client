@@ -1,7 +1,6 @@
 ﻿using System;
 using System.Collections.Generic;
 using System.IO;
-using System.Text.Json;
 using System.Threading;
 using System.Threading.Tasks;
 using ActionCableSharp;
@@ -42,17 +41,18 @@ namespace Print3DCloud.Client
             config = await Config.LoadAsync(CancellationToken.None);
             await config.SaveAsync(CancellationToken.None);
 
-            using var printer = new MarlinPrinter(args[0], 115200);
+            using var printer = new MarlinPrinter(args[0]);
             using var client = new ActionCableClient(new Uri("ws://localhost:3000/ws/"), "3DCloud-Client");
 
             await client.ConnectAsync(CancellationToken.None);
             await printer.ConnectAsync(CancellationToken.None);
 
             await printer.SendCommandAsync("G28", CancellationToken.None);
+            await printer.SendCommandAsync("M18", CancellationToken.None);
 
             var cts = new CancellationTokenSource();
 
-            Task printTask = printer.StartPrintAsync(File.OpenRead(Path.Join(Directory.GetCurrentDirectory(), args[1])), cts.Token).ContinueWith(HandlePrintTaskCompleted);
+            Task printTask = printer.StartPrintAsync(File.OpenRead(Path.Join(Directory.GetCurrentDirectory(), args[1])), cts.Token);
 
             var obj = new ClientMessageReceiver(config);
             ActionCableSubscription subscription = await client.Subscribe(new ClientIdentifier(config.Guid, config.Key), obj, CancellationToken.None);
@@ -67,27 +67,31 @@ namespace Print3DCloud.Client
                 await Task.Delay(1000);
             }
 
-            cts.Cancel();
-            await printTask;
+            if (!printTask.IsCompleted)
+            {
+                cts.Cancel();
+
+                try
+                {
+                    logger.LogInformation("Waiting for print to finish...");
+                    await printTask;
+                }
+                catch (OperationCanceledException)
+                {
+                    logger.LogInformation("Print task canceled");
+                    await printer.SendCommandAsync("M104 T0 S0", CancellationToken.None);
+                    await printer.SendCommandAsync("M104 T1 S0", CancellationToken.None);
+                    await printer.SendCommandAsync("M140 S0", CancellationToken.None);
+                    await printer.SendCommandAsync("G91", CancellationToken.None);
+                    await printer.SendCommandAsync("G0 E-1 F300", CancellationToken.None);
+                    await printer.SendCommandAsync("G0 Z5", CancellationToken.None);
+                    await printer.SendCommandAsync("G28 X Y", CancellationToken.None);
+                    await printer.SendCommandAsync("M18", CancellationToken.None);
+                }
+            }
+
             await printer.DisconnectAsync();
             await client.DisconnectAsync(CancellationToken.None);
-        }
-
-        private static void HandlePrintTaskCompleted(Task task)
-        {
-            if (task.IsCompletedSuccessfully)
-            {
-                logger.LogDebug("Print completed");
-            }
-            else if (task.IsCanceled)
-            {
-                logger.LogWarning("Print canceled");
-            }
-            else if (task.IsFaulted)
-            {
-                logger.LogError("Print errored");
-                logger.LogError(task.Exception!.ToString());
-            }
         }
     }
 }
