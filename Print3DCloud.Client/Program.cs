@@ -42,35 +42,35 @@ namespace Print3DCloud.Client
             await config.SaveAsync(CancellationToken.None);
 
             using var printer = new MarlinPrinter(args[0]);
-            using var client = new ActionCableClient(new Uri("ws://localhost:3000/ws/"), "3DCloud-Client");
 
-            await client.ConnectAsync(CancellationToken.None);
             await printer.ConnectAsync(CancellationToken.None);
 
-            await printer.SendCommandAsync("G28", CancellationToken.None);
+            await printer.SendCommandAsync("G28 X Y", CancellationToken.None);
             await printer.SendCommandAsync("M18", CancellationToken.None);
 
             var cts = new CancellationTokenSource();
 
+            Task sendTask = SendTask(printer, cts.Token);
+
             Task printTask = printer.StartPrintAsync(File.OpenRead(Path.Join(Directory.GetCurrentDirectory(), args[1])), cts.Token);
 
-            var obj = new ClientMessageReceiver(config);
-            ActionCableSubscription subscription = await client.Subscribe(new ClientIdentifier(config.Guid, config.Key), obj, CancellationToken.None);
+            string? input = null;
 
-            while (!Console.KeyAvailable)
+            do
             {
-                if (client.State == ClientState.Connected && subscription?.State == SubscriptionState.Subscribed)
-                {
-                    await subscription.Perform(new PrinterStateMessage(new Dictionary<string, PrinterState> { { printer.Identifier, printer.State } }), CancellationToken.None);
-                }
+                input = Console.ReadLine();
 
-                await Task.Delay(1000);
+                if (!string.IsNullOrEmpty(input))
+                {
+                    await printer.SendCommandAsync(input, CancellationToken.None);
+                }
             }
+            while (input != "exit");
+
+            cts.Cancel();
 
             if (!printTask.IsCompleted)
             {
-                cts.Cancel();
-
                 try
                 {
                     logger.LogInformation("Waiting for print to finish...");
@@ -91,6 +91,30 @@ namespace Print3DCloud.Client
             }
 
             await printer.DisconnectAsync();
+            await sendTask;
+        }
+
+        private static async Task SendTask(IPrinter printer, CancellationToken cancellationToken)
+        {
+            if (config == null) return;
+
+            using var client = new ActionCableClient(new Uri("ws://localhost:3000/ws/"), "3DCloud-Client");
+
+            await client.ConnectAsync(cancellationToken);
+
+            var obj = new ClientMessageReceiver(config);
+            ActionCableSubscription subscription = await client.Subscribe(new ClientIdentifier(config.Guid, config.Key), obj, CancellationToken.None);
+
+            while (!cancellationToken.IsCancellationRequested)
+            {
+                if (client.State == ClientState.Connected && subscription?.State == SubscriptionState.Subscribed)
+                {
+                    await subscription.Perform(new PrinterStateMessage(new Dictionary<string, PrinterState> { { printer.Identifier, printer.State } }), CancellationToken.None);
+                }
+
+                await Task.Delay(1000, cancellationToken);
+            }
+
             await client.DisconnectAsync(CancellationToken.None);
         }
     }

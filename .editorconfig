@@ -14,6 +14,9 @@ dotnet_diagnostic.SA1503.severity = none
 # SA1407: Arithmetic expressions should declare precedence
 dotnet_diagnostic.SA1407.severity = none
 
+# IDE0090: Simplify new expression
+dotnet_diagnostic.IDE0090.severity = none
+
 [*Test.cs]
 
 # SA1600: Elements should be documented

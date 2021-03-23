@@ -3,7 +3,6 @@ using System.Collections.Generic;
 using System.Diagnostics.CodeAnalysis;
 using System.Globalization;
 using System.IO;
-using System.IO.Ports;
 using System.Text;
 using System.Text.RegularExpressions;
 using System.Threading;
@@ -18,7 +17,6 @@ namespace Print3DCloud.Client.Printers
     internal class MarlinPrinter : IPrinter
     {
         private const string PrinterAliveLine = "echo:start";
-        private const string HelloCommand = "G0";
         private const string CommandExpectedResponse = "ok";
         private const string ReportTemperaturesCommand = "M105";
 
@@ -49,12 +47,10 @@ namespace Print3DCloud.Client.Printers
         /// </summary>
         /// <param name="portName">Name of the serial port to which this printer should connect.</param>
         /// <param name="baudRate">The baud rate to be used for serial communication.</param>
-        /// <param name="parity">The type of parity checking to use when communicating.</param>
-        public MarlinPrinter(string portName, int baudRate = 250000, Parity parity = Parity.None)
+        public MarlinPrinter(string portName, int baudRate = 250_000)
         {
             this.PortName = portName;
             this.BaudRate = baudRate;
-            this.Parity = parity;
 
             this.logger = Logging.LoggerFactory.CreateLogger<MarlinPrinter>();
             this.sendCommandResetEvent = new AutoResetEvent(true);
@@ -75,11 +71,6 @@ namespace Print3DCloud.Client.Printers
         /// Gets the baud rate used when communicating via serial.
         /// </summary>
         public int BaudRate { get; }
-
-        /// <summary>
-        /// Gets the <see cref="Parity"/> used when communicating via serial.
-        /// </summary>
-        public Parity Parity { get; }
 
         /// <inheritdoc/>
         public PrinterState State => new PrinterState
@@ -110,12 +101,16 @@ namespace Print3DCloud.Client.Printers
 
             this.globalCancellationTokenSource = new CancellationTokenSource();
 
-            this.serialPort = new AsyncSerialPort(this.PortName, this.BaudRate, this.Parity)
+            this.serialPort = new AsyncSerialPort(this.PortName, this.BaudRate)
             {
                 RtsEnable = true,
                 DtrEnable = true,
                 NewLine = "\n",
             };
+
+            // clean up anything that's currently there
+            this.serialPort.DiscardInBuffer();
+            this.serialPort.DiscardOutBuffer();
 
             this.serialPort.Open();
 
@@ -128,17 +123,19 @@ namespace Print3DCloud.Client.Printers
                 line = await this.ReadLineAsync();
             }
 
-            await this.WriteLineAsync(HelloCommand);
+            await this.WriteLineAsync("M110 N0");
 
             while (line != CommandExpectedResponse)
             {
                 line = await this.ReadLineAsync();
             }
 
+            this.currentLineNumber = 1;
+
             this.logger.LogInformation($"Connected");
 
-            this.temperaturePollingTask = Task.Run(this.TemperaturePolling, cancellationToken).ContinueWith(this.HandleTemperaturePollingCompleted);
-            this.receiveLoopTask = Task.Run(this.ReceiveLoop, cancellationToken).ContinueWith(this.HandleReceiveLoopCompleted);
+            this.temperaturePollingTask = Task.Run(this.TemperaturePolling, cancellationToken).ContinueWith(this.HandleTemperaturePollingTaskCompleted, CancellationToken.None);
+            this.receiveLoopTask = Task.Run(this.ReceiveLoop, cancellationToken).ContinueWith(this.HandleReceiveLoopTaskCompleted, CancellationToken.None);
         }
 
         /// <inheritdoc/>
@@ -325,7 +322,7 @@ namespace Print3DCloud.Client.Printers
             }
         }
 
-        private void HandleTemperaturePollingCompleted(Task task)
+        private void HandleTemperaturePollingTaskCompleted(Task task)
         {
             if (task.IsCompletedSuccessfully)
             {
@@ -357,7 +354,7 @@ namespace Print3DCloud.Client.Printers
             }
         }
 
-        private void HandleReceiveLoopCompleted(Task task)
+        private void HandleReceiveLoopTaskCompleted(Task task)
         {
             if (task.IsCompletedSuccessfully)
             {
