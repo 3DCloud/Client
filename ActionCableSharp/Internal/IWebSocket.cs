@@ -8,7 +8,7 @@ namespace ActionCableSharp.Internal
     /// <summary>
     /// Represents a WebSocket. API is based on what <see cref="ClientWebSocket"/> offers.
     /// </summary>
-    internal interface IWebSocket : IDisposable
+    public interface IWebSocket : IDisposable
     {
         /// <summary>
         /// Gets a value indicating whether or not this WebSocket is connected to a server.

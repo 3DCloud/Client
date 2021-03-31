@@ -8,6 +8,7 @@ using System.Threading;
 using System.Threading.Tasks;
 using ActionCableSharp.Internal;
 using Microsoft.Extensions.Logging;
+using Microsoft.Extensions.Logging.Abstractions;
 
 namespace ActionCableSharp
 {
@@ -20,6 +21,7 @@ namespace ActionCableSharp
         private static readonly int[] ReconnectDelays = new int[] { 1_000, 2_000, 5_000, 10_000, 15_000, 20_000, 30_000 };
 
         private readonly ILogger<ActionCableClient> logger;
+        private readonly ILoggerFactory loggerFactory;
         private readonly IWebSocketFactory webSocketFactory;
         private readonly List<ActionCableSubscription> subscriptions;
         private readonly SemaphoreSlim semaphore;
@@ -34,7 +36,18 @@ namespace ActionCableSharp
         /// <param name="uri">URI pointing to an Action Cable mount path.</param>
         /// <param name="origin">Origin to use in the headers of requests.</param>
         public ActionCableClient(Uri uri, string origin)
-            : this(uri, origin, new ClientWebSocketFactory())
+            : this(new NullLoggerFactory(), uri, origin, new ClientWebSocketFactory())
+        {
+        }
+
+        /// <summary>
+        /// Initializes a new instance of the <see cref="ActionCableClient"/> class.
+        /// </summary>
+        /// <param name="loggerFactory">The logger factory to use.</param>
+        /// <param name="uri">URI pointing to an Action Cable mount path.</param>
+        /// <param name="origin">Origin to use in the headers of requests.</param>
+        public ActionCableClient(ILoggerFactory loggerFactory, Uri uri, string origin)
+            : this(loggerFactory, uri, origin, new ClientWebSocketFactory())
         {
         }
 
@@ -45,6 +58,18 @@ namespace ActionCableSharp
         /// <param name="origin">Origin to use in the headers of requests.</param>
         /// <param name="webSocketFactory">Factory to use when creating <see cref="IWebSocket"/> instances.</param>
         internal ActionCableClient(Uri uri, string origin, IWebSocketFactory webSocketFactory)
+            : this(new NullLoggerFactory(), uri, origin, webSocketFactory)
+        {
+        }
+
+        /// <summary>
+        /// Initializes a new instance of the <see cref="ActionCableClient"/> class.
+        /// </summary>
+        /// <param name="loggerFactory">The logger factory to use.</param>
+        /// <param name="uri">URI pointing to an Action Cable mount path.</param>
+        /// <param name="origin">Origin to use in the headers of requests.</param>
+        /// <param name="webSocketFactory">Factory to use when creating <see cref="IWebSocket"/> instances.</param>
+        internal ActionCableClient(ILoggerFactory loggerFactory, Uri uri, string origin, IWebSocketFactory webSocketFactory)
         {
             this.Uri = uri;
             this.Origin = origin;
@@ -63,7 +88,8 @@ namespace ActionCableSharp
                 PropertyNamingPolicy = namingPolicy,
             };
 
-            this.logger = Logging.LoggerFactory.CreateLogger<ActionCableClient>();
+            this.logger = loggerFactory.CreateLogger<ActionCableClient>();
+            this.loggerFactory = loggerFactory;
             this.webSocketFactory = webSocketFactory;
             this.subscriptions = new List<ActionCableSubscription>();
             this.semaphore = new SemaphoreSlim(1);
@@ -120,12 +146,12 @@ namespace ActionCableSharp
         /// Subscribes to a specific Action Cable channel.
         /// </summary>
         /// <param name="identifier">Identifier for the channel.</param>
-        /// <param name="receiver">The <see cref="MessageReceiver"/> that will receive messages.</param>
+        /// <param name="receiver">The <see cref="IMessageReceiver"/> that will receive messages.</param>
         /// <param name="cancellationToken">A <see cref="CancellationToken"/> used to propagate notification that the operation should be canceled.</param>
         /// <returns>A reference to the <see cref="ActionCableSubscription"/> linked to the specified <paramref name="identifier"/>.</returns>
-        public async Task<ActionCableSubscription> Subscribe(Identifier identifier, MessageReceiver receiver, CancellationToken cancellationToken)
+        public async Task<ActionCableSubscription> Subscribe(Identifier identifier, IMessageReceiver receiver, CancellationToken cancellationToken)
         {
-            var subscription = new ActionCableSubscription(this, identifier, receiver);
+            var subscription = new ActionCableSubscription(this.loggerFactory.CreateLogger<ActionCableSubscription>(), this, identifier, receiver);
             this.subscriptions.Add(subscription);
 
             try

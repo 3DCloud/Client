@@ -5,7 +5,7 @@ namespace ActionCableSharp.Internal
     /// <summary>
     /// Represents a class that can create <see cref="IWebSocket"/> instances.
     /// </summary>
-    internal interface IWebSocketFactory
+    public interface IWebSocketFactory
     {
         /// <summary>
         /// Creates an instance of a class that implements <see cref="IWebSocket"/>.

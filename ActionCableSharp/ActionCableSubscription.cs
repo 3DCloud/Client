@@ -18,22 +18,23 @@ namespace ActionCableSharp
     {
         private readonly ILogger<ActionCableSubscription> logger;
         private readonly ActionCableClient client;
-        private readonly MessageReceiver receiver;
+        private readonly IMessageReceiver receiver;
         private readonly Type receiverType;
         private readonly Dictionary<string, ActionMethod> actionMethods;
 
         /// <summary>
         /// Initializes a new instance of the <see cref="ActionCableSubscription"/> class.
         /// </summary>
+        /// <param name="logger">The logger to use.</param>
         /// <param name="client">The <see cref="ActionCableClient"/> instance to which this subscription belongs.</param>
         /// <param name="identifier">The <see cref="Identifier"/> used to identifiy this subscription when communicating with the server.</param>
-        /// <param name="receiver">The <see cref="MessageReceiver"/> that will receive messages.</param>
-        internal ActionCableSubscription(ActionCableClient client, Identifier identifier, MessageReceiver receiver)
+        /// <param name="receiver">The <see cref="IMessageReceiver"/> that will receive messages.</param>
+        internal ActionCableSubscription(ILogger<ActionCableSubscription> logger, ActionCableClient client, Identifier identifier, IMessageReceiver receiver)
         {
             this.Identifier = identifier;
             this.State = SubscriptionState.Pending;
 
-            this.logger = Logging.LoggerFactory.CreateLogger<ActionCableSubscription>();
+            this.logger = logger;
             this.client = client;
             this.receiver = receiver;
             this.receiverType = receiver.GetType();
@@ -118,7 +119,7 @@ namespace ActionCableSharp
             {
                 // exclude getters/setters & base object methods
                 if (method.IsSpecialName ||
-                    method.GetBaseDefinition()?.DeclaringType == typeof(MessageReceiver) ||
+                    method.GetBaseDefinition()?.DeclaringType == typeof(IMessageReceiver) ||
                     method.GetBaseDefinition()?.DeclaringType == typeof(object)) continue;
 
                 string actionName;

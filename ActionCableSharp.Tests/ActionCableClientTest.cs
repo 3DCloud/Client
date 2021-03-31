@@ -81,7 +81,7 @@ namespace ActionCableSharp.Tests
             var mockWebSocketFactory = new Mock<IWebSocketFactory>();
             mockWebSocketFactory.Setup(f => f.CreateWebSocket()).Returns(mockWebSocket.Object);
 
-            var mockMessageReceiver = new Mock<MessageReceiver>();
+            var mockMessageReceiver = new Mock<IMessageReceiver>();
 
             var client = new ActionCableClient(uri, "dummy", mockWebSocketFactory.Object);
             var cancellationToken = new CancellationToken(false);
@@ -119,7 +119,7 @@ namespace ActionCableSharp.Tests
             var mockWebSocketFactory = new Mock<IWebSocketFactory>();
             mockWebSocketFactory.Setup(f => f.CreateWebSocket()).Returns(mockWebSocket.Object);
 
-            var mockMessageReceiver = new Mock<MessageReceiver>();
+            var mockMessageReceiver = new Mock<IMessageReceiver>();
 
             var client = new ActionCableClient(uri, "dummy", mockWebSocketFactory.Object);
             var identifier = new Identifier("channel_name");
@@ -143,7 +143,7 @@ namespace ActionCableSharp.Tests
 
             var mockWebSocketFactory = new Mock<IWebSocketFactory>();
 
-            var mockMessageReceiver = new Mock<MessageReceiver>();
+            var mockMessageReceiver = new Mock<IMessageReceiver>();
 
             var client = new ActionCableClient(uri, "dummy", mockWebSocketFactory.Object);
             var identifier = new Identifier("channel_name");
@@ -164,7 +164,7 @@ namespace ActionCableSharp.Tests
             var mockWebSocketFactory = new Mock<IWebSocketFactory>();
             mockWebSocketFactory.Setup(f => f.CreateWebSocket()).Returns(mockWebSocket.Object);
 
-            var mockMessageReceiver = new Mock<MessageReceiver>();
+            var mockMessageReceiver = new Mock<IMessageReceiver>();
 
             var client = new ActionCableClient(uri, "dummy", mockWebSocketFactory.Object);
             var cancellationToken = new CancellationToken(false);
@@ -198,7 +198,7 @@ namespace ActionCableSharp.Tests
             var mockWebSocketFactory = new Mock<IWebSocketFactory>();
             mockWebSocketFactory.Setup(f => f.CreateWebSocket()).Returns(mockWebSocket.Object);
 
-            var mockMessageReceiver = new Mock<MessageReceiver>();
+            var mockMessageReceiver = new Mock<IMessageReceiver>();
 
             var client = new ActionCableClient(uri, "dummy", mockWebSocketFactory.Object);
             var cancellationToken = new CancellationToken(false);
@@ -235,7 +235,7 @@ namespace ActionCableSharp.Tests
             var mockWebSocketFactory = new Mock<IWebSocketFactory>();
             mockWebSocketFactory.Setup(f => f.CreateWebSocket()).Returns(mockWebSocket.Object);
 
-            var mockMessageReceiver = new Mock<MessageReceiver>();
+            var mockMessageReceiver = new Mock<IMessageReceiver>();
 
             var client = new ActionCableClient(uri, "dummy", mockWebSocketFactory.Object);
             var cancellationToken = new CancellationToken(false);

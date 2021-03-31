@@ -45,14 +45,15 @@ namespace Print3DCloud.Client.Printers
         /// <summary>
         /// Initializes a new instance of the <see cref="MarlinPrinter"/> class.
         /// </summary>
+        /// <param name="logger">The logger that should be used for this printer.</param>
         /// <param name="portName">Name of the serial port to which this printer should connect.</param>
         /// <param name="baudRate">The baud rate to be used for serial communication.</param>
-        public MarlinPrinter(string portName, int baudRate = 250_000)
+        public MarlinPrinter(ILogger<MarlinPrinter> logger, string portName, int baudRate = 250_000)
         {
             this.PortName = portName;
             this.BaudRate = baudRate;
 
-            this.logger = Logging.LoggerFactory.CreateLogger<MarlinPrinter>();
+            this.logger = logger;
             this.sendCommandResetEvent = new AutoResetEvent(true);
             this.commandAcknowledgedResetEvent = new AutoResetEvent(true);
             this.hotendTemperatures = new List<TemperatureSensor>();
