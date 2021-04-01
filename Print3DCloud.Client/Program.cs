@@ -40,7 +40,7 @@ namespace Print3DCloud.Client
                 {
                     services.AddLogging(builder => builder.SetMinimumLevel(LogLevel.Trace).AddConsole());
 
-                    services.AddSingleton((serviceProvider) => new ActionCableClient(serviceProvider.GetRequiredService<ILoggerFactory>(), new Uri("ws://localhost:3000/cable"), "3DCloud-Client"));
+                    services.AddSingleton((serviceProvider) => new ActionCableClient(serviceProvider.GetRequiredService<ILogger<ActionCableClient>>(), new Uri("ws://localhost:3000/cable"), "3DCloud-Client"));
                     services.AddSingleton(config);
                     services.AddSingleton<DeviceManager>();
                 });

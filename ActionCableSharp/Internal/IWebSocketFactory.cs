@@ -1,6 +1,4 @@
-﻿using System.Net.WebSockets;
-
-namespace ActionCableSharp.Internal
+﻿namespace ActionCableSharp.Internal
 {
     /// <summary>
     /// Represents a class that can create <see cref="IWebSocket"/> instances.

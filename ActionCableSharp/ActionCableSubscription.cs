@@ -7,7 +7,6 @@ using System.Text.Json;
 using System.Threading;
 using System.Threading.Tasks;
 using ActionCableSharp.Internal;
-using Microsoft.Extensions.Logging;
 
 namespace ActionCableSharp
 {
@@ -16,7 +15,6 @@ namespace ActionCableSharp
     /// </summary>
     public class ActionCableSubscription
     {
-        private readonly ILogger<ActionCableSubscription> logger;
         private readonly ActionCableClient client;
         private readonly IMessageReceiver receiver;
         private readonly Type receiverType;
@@ -25,16 +23,14 @@ namespace ActionCableSharp
         /// <summary>
         /// Initializes a new instance of the <see cref="ActionCableSubscription"/> class.
         /// </summary>
-        /// <param name="logger">The logger to use.</param>
         /// <param name="client">The <see cref="ActionCableClient"/> instance to which this subscription belongs.</param>
         /// <param name="identifier">The <see cref="Identifier"/> used to identifiy this subscription when communicating with the server.</param>
         /// <param name="receiver">The <see cref="IMessageReceiver"/> that will receive messages.</param>
-        internal ActionCableSubscription(ILogger<ActionCableSubscription> logger, ActionCableClient client, Identifier identifier, IMessageReceiver receiver)
+        internal ActionCableSubscription(ActionCableClient client, Identifier identifier, IMessageReceiver receiver)
         {
             this.Identifier = identifier;
             this.State = SubscriptionState.Pending;
 
-            this.logger = logger;
             this.client = client;
             this.receiver = receiver;
             this.receiverType = receiver.GetType();
@@ -115,20 +111,17 @@ namespace ActionCableSharp
 
             var namingPolicy = new SnakeCaseNamingPolicy();
 
-            foreach (MethodInfo method in this.receiverType.GetMethods(BindingFlags.Public | BindingFlags.NonPublic | BindingFlags.Instance))
+            foreach (MethodInfo method in this.receiverType.GetMethods(BindingFlags.Public | BindingFlags.NonPublic | BindingFlags.Instance).Except(this.receiverType.GetInterfaceMap(typeof(IMessageReceiver)).TargetMethods))
             {
-                // exclude getters/setters & base object methods
+                // exclude special methods (getters/setters among other things) and base object methods
                 if (method.IsSpecialName ||
-                    method.GetBaseDefinition()?.DeclaringType == typeof(IMessageReceiver) ||
                     method.GetBaseDefinition()?.DeclaringType == typeof(object)) continue;
 
                 string actionName;
                 ActionMethodAttribute? attribute = method.GetCustomAttribute<ActionMethodAttribute>();
 
-                // ignore special methods (getters/setters among other things) and non-public methods that don't have an ActionMethodAttribute
+                // ignore non-public methods that don't have an ActionMethodAttribute
                 if (!method.IsPublic && attribute == null) continue;
-
-                ParameterInfo[] parameters = method.GetParameters();
 
                 if (attribute != null)
                 {
@@ -139,7 +132,7 @@ namespace ActionCableSharp
                     actionName = namingPolicy.ConvertName(method.Name);
                 }
 
-                this.actionMethods.TryAdd(actionName, new ActionMethod(method, parameters));
+                this.actionMethods.TryAdd(actionName, new ActionMethod(method, method.GetParameters()));
             }
         }
 
@@ -147,28 +140,24 @@ namespace ActionCableSharp
         {
             if (data.Equals(default))
             {
-                this.logger.LogError($"Data is empty");
-                return;
+                throw new InvalidOperationException($"Data is empty");
             }
 
             if (!data.TryGetProperty("action", out JsonElement action))
             {
-                this.logger.LogError($"Action key does not exist in message");
-                return;
+                throw new InvalidOperationException($"Action key does not exist in message");
             }
 
             string? actionName = action.GetString();
 
             if (string.IsNullOrWhiteSpace(actionName))
             {
-                this.logger.LogError($"Action is empty");
-                return;
+                throw new InvalidOperationException($"Action is empty");
             }
 
             if (!this.actionMethods.TryGetValue(actionName, out ActionMethod? actionMethod))
             {
-                this.logger.LogError($"No method for action '{actionName}'");
-                return;
+                throw new InvalidOperationException($"No method for action '{actionName}'");
             }
 
             var args = new List<object?>();
@@ -194,33 +183,11 @@ namespace ActionCableSharp
                         data.WriteTo(writer);
                     }
 
-                    object? deserialized = null;
-
-                    try
-                    {
-                        deserialized = JsonSerializer.Deserialize(bufferWriter.WrittenSpan, parameterType, this.client.JsonSerializerOptions);
-                    }
-                    catch (JsonException ex)
-                    {
-                        this.logger.LogError($"Failed to deserialize message into type '{parameterType.FullName}'");
-                        this.logger.LogError(ex.ToString());
-                    }
-
-                    args.Add(deserialized);
+                    args.Add(JsonSerializer.Deserialize(bufferWriter.WrittenSpan, parameterType, this.client.JsonSerializerOptions));
                 }
             }
 
-            try
-            {
-                actionMethod.Method.Invoke(this.receiver, args.ToArray());
-            }
-            catch (TargetInvocationException ex)
-            {
-                string argTypes = string.Join(", ", args.Select(a => a?.GetType().FullName ?? "null"));
-
-                this.logger.LogError($"Failed to invoke method {actionMethod.Method.Name}({argTypes}) on object of type '{this.receiverType.FullName}'");
-                this.logger.LogError(ex.ToString());
-            }
+            actionMethod.Method.Invoke(this.receiver, args.ToArray());
         }
 
         private class ActionMethod
