@@ -67,7 +67,7 @@ namespace ActionCableSharp
         /// <returns>A <see cref="Task"/> that completes once the unsubscription request has been sent to the server.</returns>
         public async Task Unsubscribe(CancellationToken cancellationToken)
         {
-            await this.client.Unsubscribe(this, cancellationToken);
+            await this.client.Unsubscribe(this, cancellationToken).ConfigureAwait(false);
 
             this.State = SubscriptionState.Unsubscribed;
 

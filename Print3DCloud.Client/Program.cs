@@ -21,15 +21,15 @@ namespace Print3DCloud.Client
         /// <returns>A <see cref="Task"/>.</returns>
         private static async Task Main(string[] args)
         {
-            var config = await Config.LoadAsync(CancellationToken.None);
+            var config = await Config.LoadAsync(CancellationToken.None).ConfigureAwait(false);
 
             using IHost host = CreateHostBuilder(args, config).Build();
             IServiceProvider services = host.Services;
 
-            await services.GetRequiredService<ActionCableClient>().ConnectAsync(CancellationToken.None);
-            await services.GetRequiredService<DeviceManager>().StartAsync();
+            await services.GetRequiredService<ActionCableClient>().ConnectAsync(CancellationToken.None).ConfigureAwait(false);
+            await services.GetRequiredService<DeviceManager>().StartAsync().ConfigureAwait(false);
 
-            await host.RunAsync();
+            await host.RunAsync().ConfigureAwait(false);
         }
 
         private static IHostBuilder CreateHostBuilder(string[] args, Config config)

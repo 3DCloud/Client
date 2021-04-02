@@ -52,7 +52,7 @@ namespace Print3DCloud.Client.Configuration
                 {
                     await using (FileStream fileStream = File.OpenRead(FilePath))
                     {
-                        config = await JsonSerializer.DeserializeAsync<Config>(fileStream, Options, cancellationToken);
+                        config = await JsonSerializer.DeserializeAsync<Config>(fileStream, Options, cancellationToken).ConfigureAwait(false);
                     }
                 }
                 catch (JsonException ex)
@@ -78,7 +78,7 @@ namespace Print3DCloud.Client.Configuration
         {
             await using (FileStream fileStream = File.OpenWrite(FilePath))
             {
-                await JsonSerializer.SerializeAsync(fileStream, this, Options, cancellationToken);
+                await JsonSerializer.SerializeAsync(fileStream, this, Options, cancellationToken).ConfigureAwait(false);
             }
         }
     }

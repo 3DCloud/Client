@@ -1,6 +1,5 @@
 ﻿using System;
 using System.Collections.Generic;
-using System.IO;
 using System.Threading;
 using System.Threading.Tasks;
 using ActionCableSharp;
@@ -53,7 +52,7 @@ namespace Print3DCloud.Client
         /// <returns>A <see cref="Task"/> that completes once the device manager has started looking for devices.</returns>
         public Task StartAsync()
         {
-            return this.actionCableClient.Subscribe(new ClientIdentifier(this.config.Guid, this.config.Key), this, CancellationToken.None).ContinueWith(this.HandleTaskCompleted);
+            return this.actionCableClient.Subscribe(new ClientIdentifier(this.config.Guid, this.config.Key), this, CancellationToken.None);
         }
 
         /// <inheritdoc/>
@@ -83,13 +82,13 @@ namespace Print3DCloud.Client
             string deviceId = message.Printer.DeviceId;
             string driver = message.Printer.PrinterDefinition.Driver;
 
-            IPrinter printer;
+            if (!this.discoveredSerialDevices.TryGetValue(deviceId, out SerialPortInfo portInfo)) return;
+
+            IGcodePrinter printer;
 
             switch (driver)
             {
                 case "marlin":
-                    if (!this.discoveredSerialDevices.TryGetValue(deviceId, out SerialPortInfo portInfo)) return;
-
                     printer = new MarlinPrinter(this.serviceProvider.GetRequiredService<ILogger<MarlinPrinter>>(), portInfo.PortName);
                     break;
 
@@ -100,13 +99,11 @@ namespace Print3DCloud.Client
 
             this.printers.Add(deviceId, printer);
 
-            await printer.ConnectAsync(CancellationToken.None);
+            await printer.ConnectAsync(CancellationToken.None).ConfigureAwait(false);
 
-            if (message.Printer.PrinterDefinition.StartGcode == null) return;
-
-            foreach (string line in message.Printer.PrinterDefinition.StartGcode.Split('\n', StringSplitOptions.RemoveEmptyEntries))
+            if (message.Printer.PrinterDefinition.StartGcode != null)
             {
-                await printer.SendCommandAsync(line, CancellationToken.None);
+                await printer.SendCommandBlockAsync(message.Printer.PrinterDefinition.StartGcode, CancellationToken.None).ConfigureAwait(false);
             }
         }
 
@@ -130,7 +127,7 @@ namespace Print3DCloud.Client
 
                     this.logger.LogInformation("Found new device at " + portInfo.PortName);
 
-                    await this.subscription.Perform(new DeviceMessage(portInfo.PortName, portInfo.UniqueId, portInfo.IsPortableUniqueId), CancellationToken.None);
+                    await this.subscription.Perform(new DeviceMessage(portInfo.PortName, portInfo.UniqueId, portInfo.IsPortableUniqueId), CancellationToken.None).ConfigureAwait(false);
 
                     this.discoveredSerialDevices.Add(portInfo.UniqueId, portInfo);
                 }
@@ -146,7 +143,7 @@ namespace Print3DCloud.Client
                     {
                         try
                         {
-                            await printer.DisconnectAsync();
+                            await printer.DisconnectAsync().ConfigureAwait(false);
                         }
                         catch (Exception ex)
                         {
@@ -160,7 +157,7 @@ namespace Print3DCloud.Client
                     this.discoveredSerialDevices.Remove(deviceId);
                 }
 
-                await Task.Delay(5000);
+                await Task.Delay(5000).ConfigureAwait(false);
             }
 
             this.logger.LogInformation("Device polling loop exited");

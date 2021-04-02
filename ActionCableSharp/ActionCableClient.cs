@@ -154,7 +154,7 @@ namespace ActionCableSharp
 
             try
             {
-                await this.SendMessageAsync("subscribe", identifier, cancellationToken);
+                await this.SendMessageAsync("subscribe", identifier, cancellationToken).ConfigureAwait(false);
             }
             catch (WebSocketException ex)
             {
@@ -202,9 +202,9 @@ namespace ActionCableSharp
             byte[] buffer = new byte[BufferSize];
             int bytesRead;
 
-            await this.semaphore.WaitAsync();
+            await this.semaphore.WaitAsync().ConfigureAwait(false);
 
-            while ((bytesRead = await stream.ReadAsync(buffer, cancellationToken)) > 0)
+            while ((bytesRead = await stream.ReadAsync(buffer, cancellationToken).ConfigureAwait(false)) > 0)
             {
                 await this.webSocket.SendAsync(new ArraySegment<byte>(buffer, 0, bytesRead), WebSocketMessageType.Text, stream.Position >= stream.Length - 1, cancellationToken).ConfigureAwait(false);
             }
@@ -220,7 +220,7 @@ namespace ActionCableSharp
         /// <returns>A <see cref="Task"/> that completes once the unsubscription request has been sent to the server.</returns>
         internal async Task Unsubscribe(ActionCableSubscription subscription, CancellationToken cancellationToken)
         {
-            await this.SendMessageAsync("unsubscribe", subscription.Identifier, cancellationToken);
+            await this.SendMessageAsync("unsubscribe", subscription.Identifier, cancellationToken).ConfigureAwait(false);
             this.subscriptions.Remove(subscription);
         }
 
@@ -254,7 +254,7 @@ namespace ActionCableSharp
                 case WebSocketMessageType.Text:
                     try
                     {
-                        await this.ProcessMessage(stream, cancellationToken);
+                        await this.ProcessMessage(stream, cancellationToken).ConfigureAwait(false);
                     }
                     catch (JsonException ex)
                     {
@@ -266,7 +266,7 @@ namespace ActionCableSharp
 
                 case WebSocketMessageType.Close:
                     this.logger.LogInformation("Connection closed by remote host");
-                    await this.webSocket.CloseOutputAsync(WebSocketCloseStatus.NormalClosure, "Closed by request from server", cancellationToken);
+                    await this.webSocket.CloseOutputAsync(WebSocketCloseStatus.NormalClosure, "Closed by request from server", cancellationToken).ConfigureAwait(false);
                     break;
 
                 default:
@@ -310,7 +310,7 @@ namespace ActionCableSharp
                     // these run sequentially so might as well await each one individually
                     foreach (var subscription in this.subscriptions)
                     {
-                        await this.SendMessageAsync("subscribe", subscription.Identifier, cancellationToken);
+                        await this.SendMessageAsync("subscribe", subscription.Identifier, cancellationToken).ConfigureAwait(false);
                     }
                 }
                 catch (WebSocketException)
@@ -331,7 +331,7 @@ namespace ActionCableSharp
             {
                 while (this.loopCancellationTokenSource?.IsCancellationRequested == false && this.webSocket?.IsConnected == true)
                 {
-                    await this.ReceiveMessage(this.loopCancellationTokenSource.Token);
+                    await this.ReceiveMessage(this.loopCancellationTokenSource.Token).ConfigureAwait(false);
                 }
             }
             catch (TaskCanceledException)
@@ -351,13 +351,13 @@ namespace ActionCableSharp
 
             if (this.shouldReconnectAfterClose)
             {
-                await this.ReconnectAsync(CancellationToken.None);
+                await this.ReconnectAsync(CancellationToken.None).ConfigureAwait(false);
             }
         }
 
         private async Task ProcessMessage(Stream stream, CancellationToken cancellationToken)
         {
-            ActionCableIncomingMessage message = await JsonSerializer.DeserializeAsync<ActionCableIncomingMessage>(stream, this.JsonSerializerOptions, cancellationToken);
+            ActionCableIncomingMessage message = await JsonSerializer.DeserializeAsync<ActionCableIncomingMessage>(stream, this.JsonSerializerOptions, cancellationToken).ConfigureAwait(false);
 
             switch (message.Type)
             {
@@ -386,7 +386,7 @@ namespace ActionCableSharp
                     {
                         try
                         {
-                            await subscription.HandleMessage(message);
+                            await subscription.HandleMessage(message).ConfigureAwait(false);
                         }
                         catch (Exception ex)
                         {

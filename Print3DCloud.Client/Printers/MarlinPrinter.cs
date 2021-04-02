@@ -15,7 +15,7 @@ namespace Print3DCloud.Client.Printers
     /// <summary>
     /// Printer driver for printers using Marlin (or derived) firmware that send G-code via serial.
     /// </summary>
-    internal class MarlinPrinter : IPrinter
+    internal class MarlinPrinter : IGcodePrinter
     {
         private const string PrinterAliveLine = "echo:start";
         private const string CommandExpectedResponse = "ok";
@@ -122,14 +122,14 @@ namespace Print3DCloud.Client.Printers
 
             while (line != PrinterAliveLine)
             {
-                line = await this.ReadLineAsync();
+                line = await this.ReadLineAsync().ConfigureAwait(false);
             }
 
-            await this.WriteLineAsync("M110 N0");
+            await this.WriteLineAsync("M110 N0").ConfigureAwait(false);
 
             while (line != CommandExpectedResponse)
             {
-                line = await this.ReadLineAsync();
+                line = await this.ReadLineAsync().ConfigureAwait(false);
             }
 
             this.currentLineNumber = 1;
@@ -145,15 +145,26 @@ namespace Print3DCloud.Client.Printers
         {
             CancellationTokenSource commandTokenSource = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken, this.globalCancellationTokenSource.Token);
 
-            await this.sendCommandResetEvent.WaitOneAsync(cancellationToken);
+            await this.sendCommandResetEvent.WaitOneAsync(cancellationToken).ConfigureAwait(false);
 
             try
             {
-                await this.SendCommandInternalAsync(command, commandTokenSource.Token);
+                await this.SendCommandInternalAsync(command, commandTokenSource.Token).ConfigureAwait(false);
             }
             finally
             {
                 this.sendCommandResetEvent.Set();
+            }
+        }
+
+        /// <inheritdoc/>
+        public async Task SendCommandBlockAsync(string commands, CancellationToken cancellationToken)
+        {
+            foreach (string line in commands.Split('\n', StringSplitOptions.RemoveEmptyEntries))
+            {
+                cancellationToken.ThrowIfCancellationRequested();
+
+                await this.SendCommandAsync(line, cancellationToken).ConfigureAwait(false);
             }
         }
 
@@ -172,7 +183,7 @@ namespace Print3DCloud.Client.Printers
             if (this.temperaturePollingTask != null) tasks.Add(this.temperaturePollingTask.WaitForCompletionAsync());
             if (this.receiveLoopTask != null) tasks.Add(this.receiveLoopTask.WaitForCompletionAsync());
 
-            await Task.WhenAll(tasks);
+            await Task.WhenAll(tasks).ConfigureAwait(false);
 
             this.logger.LogDebug("Disconnected successfully");
         }
@@ -208,8 +219,8 @@ namespace Print3DCloud.Client.Printers
             if (this.currentLineNumber <= 0 || this.currentLineNumber == long.MaxValue)
             {
                 // we don't allow cancelling since not waiting for acknowledgement can make us enter a broken state
-                await this.commandAcknowledgedResetEvent.WaitOneAsync(CancellationToken.None);
-                await this.WriteLineAsync("M110 N0");
+                await this.commandAcknowledgedResetEvent.WaitOneAsync(CancellationToken.None).ConfigureAwait(false);
+                await this.WriteLineAsync("M110 N0").ConfigureAwait(false);
 
                 this.currentLineNumber = 1;
             }
@@ -242,8 +253,8 @@ namespace Print3DCloud.Client.Printers
                 this.resendLine = 0;
 
                 // same as above
-                await this.commandAcknowledgedResetEvent.WaitOneAsync(CancellationToken.None);
-                await this.WriteLineAsync(line);
+                await this.commandAcknowledgedResetEvent.WaitOneAsync(CancellationToken.None).ConfigureAwait(false);
+                await this.WriteLineAsync(line).ConfigureAwait(false);
             }
 
             this.currentLineNumber++;
@@ -257,7 +268,7 @@ namespace Print3DCloud.Client.Printers
             {
                 cancellationToken.ThrowIfCancellationRequested();
 
-                string? line = await fileReader.ReadLineAsync();
+                string? line = await fileReader.ReadLineAsync().ConfigureAwait(false);
 
                 if (line == null) break;
 
@@ -267,7 +278,7 @@ namespace Print3DCloud.Client.Printers
                     continue;
                 }
 
-                await this.SendCommandAsync(line, cancellationToken);
+                await this.SendCommandAsync(line, cancellationToken).ConfigureAwait(false);
             }
         }
 
@@ -298,7 +309,7 @@ namespace Print3DCloud.Client.Printers
                 throw new ObjectDisposedException("Serial port is closed");
             }
 
-            string? line = await Task.Run(this.serialPort.ReadLine);
+            string? line = await Task.Run(this.serialPort.ReadLine).ConfigureAwait(false);
 
             this.logger.LogTrace("RECV: " + line);
 
@@ -321,9 +332,9 @@ namespace Print3DCloud.Client.Printers
         {
             while (this.IsConnected)
             {
-                await this.SendCommandAsync(ReportTemperaturesCommand, CancellationToken.None);
+                await this.SendCommandAsync(ReportTemperaturesCommand, CancellationToken.None).ConfigureAwait(false);
 
-                await Task.Delay(1000, this.globalCancellationTokenSource.Token);
+                await Task.Delay(1000, this.globalCancellationTokenSource.Token).ConfigureAwait(false);
             }
         }
 
@@ -348,7 +359,7 @@ namespace Print3DCloud.Client.Printers
         {
             while (this.IsConnected)
             {
-                string? line = await this.ReadLineAsync();
+                string? line = await this.ReadLineAsync().ConfigureAwait(false);
 
                 if (string.IsNullOrWhiteSpace(line))
                 {

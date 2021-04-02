@@ -46,12 +46,6 @@ namespace Print3DCloud.Client.Printers
         }
 
         /// <inheritdoc/>
-        public Task SendCommandAsync(string command, CancellationToken cancellationToken)
-        {
-            return Task.Delay(50);
-        }
-
-        /// <inheritdoc/>
         public Task StartPrintAsync(Stream fileStream, CancellationToken cancellationToken)
         {
             this.printing = true;
