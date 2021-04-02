@@ -12,7 +12,7 @@ namespace ActionCableSharp
         /// Initializes a new instance of the <see cref="ActionMethodAttribute"/> class.
         /// </summary>
         /// <param name="actionName">Name of the action that will execute this method.</param>
-        public ActionMethodAttribute(string actionName)
+        public ActionMethodAttribute(string? actionName = null)
         {
             this.ActionName = actionName;
         }
@@ -20,6 +20,6 @@ namespace ActionCableSharp
         /// <summary>
         /// Gets the name of the action that will execute this method.
         /// </summary>
-        public string ActionName { get; }
+        public string? ActionName { get; }
     }
 }

@@ -112,19 +112,16 @@ namespace ActionCableSharp
 
             var namingPolicy = new SnakeCaseNamingPolicy();
 
-            foreach (MethodInfo method in this.receiverType.GetMethods(BindingFlags.Public | BindingFlags.NonPublic | BindingFlags.Instance).Except(this.receiverType.GetInterfaceMap(typeof(IMessageReceiver)).TargetMethods))
+            foreach (MethodInfo method in this.receiverType.GetMethods(BindingFlags.Public | BindingFlags.NonPublic | BindingFlags.Instance).Where(m => !m.IsSpecialName))
             {
-                // exclude special methods (getters/setters among other things) and base object methods
-                if (method.IsSpecialName ||
-                    method.GetBaseDefinition()?.DeclaringType == typeof(object)) continue;
-
-                string actionName;
                 ActionMethodAttribute? attribute = method.GetCustomAttribute<ActionMethodAttribute>();
 
-                // ignore non-public methods that don't have an ActionMethodAttribute
-                if (!method.IsPublic && attribute == null) continue;
+                // exclude methods that don't have an ActionMethodAttribute
+                if (attribute == null) continue;
 
-                if (attribute != null)
+                string actionName;
+
+                if (!string.IsNullOrEmpty(attribute.ActionName))
                 {
                     actionName = attribute.ActionName;
                 }

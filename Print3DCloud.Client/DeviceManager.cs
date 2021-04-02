@@ -1,5 +1,6 @@
 ﻿using System;
 using System.Collections.Generic;
+using System.Diagnostics.CodeAnalysis;
 using System.Threading;
 using System.Threading.Tasks;
 using ActionCableSharp;
@@ -75,7 +76,14 @@ namespace Print3DCloud.Client
             this.logger.LogInformation("Unsubscribed!");
         }
 
-        public async Task PrinterConfiguration(PrinterConfigurationMessage message)
+        /// <summary>
+        /// boink.
+        /// </summary>
+        /// <param name="message">The received message</param>
+        /// <returns>A <see cref="Task"/> that completes once the message has been processed.</returns>
+        [ActionMethod]
+        [SuppressMessage("CodeQuality", "IDE0051:Remove unused private member", Justification = "Called via ActionCableClient")]
+        private async Task PrinterConfiguration(PrinterConfigurationMessage message)
         {
             if (message.Printer.PrinterDefinition == null) return;
 
