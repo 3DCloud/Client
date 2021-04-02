@@ -34,7 +34,6 @@ namespace Print3DCloud.Client
 
         private static IHostBuilder CreateHostBuilder(string[] args, Config config)
         {
-
             return Host.CreateDefaultBuilder(args)
                 .ConfigureServices(services =>
                 {

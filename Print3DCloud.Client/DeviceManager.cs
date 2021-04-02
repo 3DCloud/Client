@@ -1,11 +1,15 @@
-﻿using System.Collections.Generic;
+﻿using System;
+using System.Collections.Generic;
+using System.IO;
 using System.Threading;
 using System.Threading.Tasks;
 using ActionCableSharp;
+using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Logging;
 using Print3DCloud.Client.ActionCable;
 using Print3DCloud.Client.Configuration;
+using Print3DCloud.Client.Printers;
 using Print3DCloud.Client.Utilities;
 
 namespace Print3DCloud.Client
@@ -16,11 +20,13 @@ namespace Print3DCloud.Client
     internal class DeviceManager : IMessageReceiver
     {
         private ILogger<DeviceManager> logger;
+        private IServiceProvider serviceProvider;
         private ActionCableClient actionCableClient;
         private Config config;
         private IHostApplicationLifetime hostApplicationLifetime;
 
-        private List<SerialPortInfo> discoveredDevices;
+        private Dictionary<string, SerialPortInfo> discoveredSerialDevices = new();
+        private Dictionary<string, IPrinter> printers = new();
 
         private ActionCableSubscription? subscription;
 
@@ -28,17 +34,17 @@ namespace Print3DCloud.Client
         /// Initializes a new instance of the <see cref="DeviceManager"/> class.
         /// </summary>
         /// <param name="logger">The logger to use.</param>
+        /// <param name="serviceProvider">Service provider to use when creating <see cref="IPrinter"/> instances.</param>
         /// <param name="actionCableClient">The <see cref="ActionCableClient"/> to use to communicate with the server.</param>
         /// <param name="config">The application's configuration.</param>
         /// <param name="hostApplicationLifetime">Application lifetime helper.</param>
-        public DeviceManager(ILogger<DeviceManager> logger, ActionCableClient actionCableClient, Config config, IHostApplicationLifetime hostApplicationLifetime)
+        public DeviceManager(ILogger<DeviceManager> logger, IServiceProvider serviceProvider, ActionCableClient actionCableClient, Config config, IHostApplicationLifetime hostApplicationLifetime)
         {
             this.logger = logger;
+            this.serviceProvider = serviceProvider;
             this.actionCableClient = actionCableClient;
             this.config = config;
             this.hostApplicationLifetime = hostApplicationLifetime;
-
-            this.discoveredDevices = new List<SerialPortInfo>();
         }
 
         /// <summary>
@@ -70,6 +76,40 @@ namespace Print3DCloud.Client
             this.logger.LogInformation("Unsubscribed!");
         }
 
+        public async Task PrinterConfiguration(PrinterConfigurationMessage message)
+        {
+            if (message.Printer.PrinterDefinition == null) return;
+
+            string deviceId = message.Printer.DeviceId;
+            string driver = message.Printer.PrinterDefinition.Driver;
+
+            IPrinter printer;
+
+            switch (driver)
+            {
+                case "marlin":
+                    if (!this.discoveredSerialDevices.TryGetValue(deviceId, out SerialPortInfo portInfo)) return;
+
+                    printer = new MarlinPrinter(this.serviceProvider.GetRequiredService<ILogger<MarlinPrinter>>(), portInfo.PortName);
+                    break;
+
+                default:
+                    this.logger.LogError($"Unexpected driver '{driver}'");
+                    return;
+            }
+
+            this.printers.Add(deviceId, printer);
+
+            await printer.ConnectAsync(CancellationToken.None);
+
+            if (message.Printer.PrinterDefinition.StartGcode == null) return;
+
+            foreach (string line in message.Printer.PrinterDefinition.StartGcode.Split('\n', StringSplitOptions.RemoveEmptyEntries))
+            {
+                await printer.SendCommandAsync(line, CancellationToken.None);
+            }
+        }
+
         private async Task PollDevices()
         {
             var portInfos = new List<SerialPortInfo>();
@@ -86,29 +126,38 @@ namespace Print3DCloud.Client
                 {
                     portInfos.Add(portInfo);
 
-                    if (this.discoveredDevices.Contains(portInfo)) continue;
+                    if (this.discoveredSerialDevices.ContainsKey(portInfo.UniqueId)) continue;
 
                     this.logger.LogInformation("Found new device at " + portInfo.PortName);
 
                     await this.subscription.Perform(new DeviceMessage(portInfo.PortName, portInfo.UniqueId, portInfo.IsPortableUniqueId), CancellationToken.None);
 
-                    this.discoveredDevices.Add(portInfo);
+                    this.discoveredSerialDevices.Add(portInfo.UniqueId, portInfo);
                 }
 
                 // check for lost devices
-                for (int i = 0; i < this.discoveredDevices.Count;)
+                foreach ((string deviceId, SerialPortInfo portInfo) in this.discoveredSerialDevices)
                 {
-                    SerialPortInfo portInfo = this.discoveredDevices[i];
+                    if (portInfos.Contains(portInfo)) continue;
 
-                    if (!portInfos.Contains(portInfo))
+                    this.logger.LogInformation("Lost device at " + portInfo.PortName);
+
+                    if (this.printers.TryGetValue(deviceId, out IPrinter? printer))
                     {
-                        this.logger.LogInformation("Lost device at " + portInfo.PortName);
-                        this.discoveredDevices.RemoveAt(i);
+                        try
+                        {
+                            await printer.DisconnectAsync();
+                        }
+                        catch (Exception ex)
+                        {
+                            this.logger.LogError("Could not disconnect printer");
+                            this.logger.LogError(ex.ToString());
+                        }
+
+                        this.printers.Remove(deviceId);
                     }
-                    else
-                    {
-                        i++;
-                    }
+
+                    this.discoveredSerialDevices.Remove(deviceId);
                 }
 
                 await Task.Delay(5000);

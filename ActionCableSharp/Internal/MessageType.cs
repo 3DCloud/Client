@@ -1,6 +1,4 @@
-﻿using System.Runtime.Serialization;
-
-namespace ActionCableSharp.Internal
+﻿namespace ActionCableSharp.Internal
 {
     /// <summary>
     /// The type of message represented by an instance of <see cref="ActionCableIncomingMessage"/>.

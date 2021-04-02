@@ -8,6 +8,7 @@ using System.Text.RegularExpressions;
 using System.Threading;
 using System.Threading.Tasks;
 using Microsoft.Extensions.Logging;
+using RJCP.IO.Ports;
 
 namespace Print3DCloud.Client.Printers
 {
@@ -29,7 +30,7 @@ namespace Print3DCloud.Client.Printers
         private readonly AutoResetEvent commandAcknowledgedResetEvent;
 
         private CancellationTokenSource globalCancellationTokenSource;
-        private AsyncSerialPort? serialPort;
+        private SerialPortStream? serialPort;
 
         private Task? temperaturePollingTask;
         private Task? receiveLoopTask;
@@ -102,7 +103,7 @@ namespace Print3DCloud.Client.Printers
 
             this.globalCancellationTokenSource = new CancellationTokenSource();
 
-            this.serialPort = new AsyncSerialPort(this.PortName, this.BaudRate)
+            this.serialPort = new SerialPortStream(this.PortName, this.BaudRate)
             {
                 RtsEnable = true,
                 DtrEnable = true,
@@ -172,6 +173,8 @@ namespace Print3DCloud.Client.Printers
             if (this.receiveLoopTask != null) tasks.Add(this.receiveLoopTask.WaitForCompletionAsync());
 
             await Task.WhenAll(tasks);
+
+            this.logger.LogDebug("Disconnected successfully");
         }
 
         /// <inheritdoc/>
@@ -191,6 +194,7 @@ namespace Print3DCloud.Client.Printers
         public void Dispose()
         {
             this.serialPort?.Dispose();
+            this.serialPort = null;
         }
 
         private async Task SendCommandInternalAsync(string command, CancellationToken cancellationToken)
@@ -287,14 +291,14 @@ namespace Print3DCloud.Client.Printers
             return checksum;
         }
 
-        private async Task<string> ReadLineAsync()
+        private async Task<string?> ReadLineAsync()
         {
             if (!this.IsConnected)
             {
                 throw new ObjectDisposedException("Serial port is closed");
             }
 
-            string line = await this.serialPort.ReadLineAsync();
+            string? line = await Task.Run(this.serialPort.ReadLine);
 
             this.logger.LogTrace("RECV: " + line);
 
@@ -310,7 +314,7 @@ namespace Print3DCloud.Client.Printers
 
             this.logger.LogTrace("SEND: " + line);
 
-            return this.serialPort.WriteLineAsync(line);
+            return Task.Run(() => this.serialPort.WriteLine(line));
         }
 
         private async Task TemperaturePolling()

@@ -386,7 +386,7 @@ namespace ActionCableSharp
                     {
                         try
                         {
-                            subscription.HandleMessage(message);
+                            await subscription.HandleMessage(message);
                         }
                         catch (Exception ex)
                         {

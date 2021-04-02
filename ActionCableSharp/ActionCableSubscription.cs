@@ -78,13 +78,14 @@ namespace ActionCableSharp
         /// Handle a message received by the client.
         /// </summary>
         /// <param name="message">Received message.</param>
-        internal void HandleMessage(ActionCableIncomingMessage message)
+        /// <returns>A <see cref="Task"/> that completes once the message has been handled.</returns>
+        internal Task HandleMessage(ActionCableIncomingMessage message)
         {
             Identifier? identifier = (Identifier?)JsonSerializer.Deserialize(message.Identifier, this.Identifier.GetType(), this.client.JsonSerializerOptions);
 
             if (!this.Identifier.Equals(identifier))
             {
-                return;
+                return Task.CompletedTask;
             }
 
             switch (message.Type)
@@ -92,16 +93,16 @@ namespace ActionCableSharp
                 case MessageType.ConfirmSubscription:
                     this.State = SubscriptionState.Subscribed;
                     this.receiver.Subscribed(this);
-                    break;
+                    return Task.CompletedTask;
 
                 case MessageType.RejectSubscription:
                     this.State = SubscriptionState.Rejected;
                     this.receiver.Rejected(this);
-                    break;
+                    return Task.CompletedTask;
 
                 default:
-                    this.InvokeAction(message.Message);
-                    break;
+                    object? result = this.InvokeAction(message.Message);
+                    return result is Task task ? task : Task.FromResult(result);
             }
         }
 
@@ -136,7 +137,7 @@ namespace ActionCableSharp
             }
         }
 
-        private void InvokeAction(JsonElement data)
+        private object? InvokeAction(JsonElement data)
         {
             if (data.Equals(default))
             {
@@ -187,7 +188,7 @@ namespace ActionCableSharp
                 }
             }
 
-            actionMethod.Method.Invoke(this.receiver, args.ToArray());
+            return actionMethod.Method.Invoke(this.receiver, args.ToArray());
         }
 
         private class ActionMethod
