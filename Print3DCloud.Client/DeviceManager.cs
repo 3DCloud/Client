@@ -79,7 +79,7 @@ namespace Print3DCloud.Client
         /// <summary>
         /// boink.
         /// </summary>
-        /// <param name="message">The received message</param>
+        /// <param name="message">The received message.</param>
         /// <returns>A <see cref="Task"/> that completes once the message has been processed.</returns>
         [ActionMethod]
         [SuppressMessage("CodeQuality", "IDE0051:Remove unused private member", Justification = "Called via ActionCableClient")]

@@ -57,12 +57,10 @@ namespace Print3DCloud.Client.Printers
             this.logger = logger;
             this.sendCommandResetEvent = new AutoResetEvent(true);
             this.commandAcknowledgedResetEvent = new AutoResetEvent(true);
+            this.activeHotendTemperature = new TemperatureSensor(string.Empty, 0, 0);
             this.hotendTemperatures = new List<TemperatureSensor>();
             this.globalCancellationTokenSource = new CancellationTokenSource();
         }
-
-        /// <inheritdoc/>
-        public string Identifier => this.PortName;
 
         /// <summary>
         /// Gets the name of the serial port.
@@ -75,14 +73,12 @@ namespace Print3DCloud.Client.Printers
         public int BaudRate { get; }
 
         /// <inheritdoc/>
-        public PrinterState State => new PrinterState
-        {
-            IsConnected = this.IsConnected,
-            IsPrinting = this.IsPrinting,
-            ActiveHotendTemperature = this.activeHotendTemperature,
-            HotendTemperatures = this.hotendTemperatures.ToArray(),
-            BuildPlateTemperature = this.bedTemperature,
-        };
+        public PrinterState State => new PrinterState(
+            this.IsConnected,
+            this.IsPrinting,
+            this.activeHotendTemperature,
+            this.hotendTemperatures,
+            this.bedTemperature);
 
         /// <summary>
         /// Gets a value indicating whether or not this printer is currently connected.
@@ -424,7 +420,7 @@ namespace Print3DCloud.Client.Printers
                     string sensor = match.Groups["sensor"].Value;
                     double currentTemperature = double.Parse(match.Groups["current"].Value, CultureInfo.InvariantCulture);
                     double targetTemperature = double.Parse(match.Groups["target"].Value, CultureInfo.InvariantCulture);
-                    var temperature = new TemperatureSensor { Name = sensor, Current = currentTemperature, Target = targetTemperature };
+                    var temperature = new TemperatureSensor(sensor, currentTemperature, targetTemperature);
 
                     if (sensor == "B")
                     {

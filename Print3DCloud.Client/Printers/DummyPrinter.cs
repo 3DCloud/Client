@@ -16,20 +16,16 @@ namespace Print3DCloud.Client.Printers
         private bool printing;
 
         /// <inheritdoc/>
-        public string Identifier { get; } = Guid.NewGuid().ToString();
-
-        /// <inheritdoc/>
-        public PrinterState State => new PrinterState
-        {
-            IsConnected = this.connected,
-            IsPrinting = this.printing,
-            HotendTemperatures = new[]
+        public PrinterState State => new PrinterState(
+            this.connected,
+            this.printing,
+            new TemperatureSensor("T0", 210 + this.random.NextDouble() * 0.5, 210),
+            new[]
             {
-                new TemperatureSensor { Current = 210 + this.random.NextDouble() * 0.5 },
-                new TemperatureSensor { Current = 190 + this.random.NextDouble() * 0.5 },
+                new TemperatureSensor("T0", 210 + this.random.NextDouble() * 0.5, 210),
+                new TemperatureSensor("T1", 190 + this.random.NextDouble() * 0.5, 190),
             },
-            BuildPlateTemperature = new TemperatureSensor { Current = 60 + this.random.NextDouble() * 0.5 },
-        };
+            new TemperatureSensor("B", 60 + this.random.NextDouble() * 0.5, 60));
 
         /// <inheritdoc/>
         public Task ConnectAsync(CancellationToken cancellationToken)

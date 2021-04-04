@@ -11,11 +11,6 @@ namespace Print3DCloud.Client.Printers
     internal interface IPrinter : IDisposable
     {
         /// <summary>
-        /// Gets the printer's identifier.
-        /// </summary>
-        public string Identifier { get; }
-
-        /// <summary>
         /// Gets the <see cref="PrinterState"/> that represents the current state of this printer.
         /// </summary>
         /// <returns>The state of the printer.</returns>
