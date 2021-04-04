@@ -21,7 +21,11 @@ jobs:
       run: dotnet restore
 
     - name: Build
-      run: dotnet build --no-restore
+      run: |
+        dotnet build Print3DCloud.Client/Print3DCloud.Client.csproj --no-restore --runtime win-x64
+        dotnet build Print3DCloud.Client/Print3DCloud.Client.csproj --no-restore --runtime linux-x64
+        dotnet build Print3DCloud.Client/Print3DCloud.Client.csproj --no-restore --runtime linux-arm
+        dotnet build Print3DCloud.Client/Print3DCloud.Client.csproj --no-restore --runtime linux-arm64
 
     - name: Test
-      run: dotnet test --no-build --verbosity normal
+      run: dotnet test --verbosity normal
