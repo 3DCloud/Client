@@ -1,6 +1,7 @@
 ﻿using System;
 using System.Collections.Generic;
 using System.Diagnostics.CodeAnalysis;
+using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
 using ActionCableSharp;
@@ -19,16 +20,18 @@ namespace Print3DCloud.Client
     /// </summary>
     internal class DeviceManager : IMessageReceiver
     {
-        private ILogger<DeviceManager> logger;
-        private IServiceProvider serviceProvider;
-        private ActionCableClient actionCableClient;
-        private Config config;
-        private IHostApplicationLifetime hostApplicationLifetime;
+        private readonly ILogger<DeviceManager> logger;
+        private readonly IServiceProvider serviceProvider;
+        private readonly ActionCableClient actionCableClient;
+        private readonly Config config;
+        private readonly IHostApplicationLifetime hostApplicationLifetime;
 
-        private Dictionary<string, SerialPortInfo> discoveredSerialDevices = new();
-        private Dictionary<string, IPrinter> printers = new();
+        private readonly Dictionary<string, SerialPortInfo> discoveredSerialDevices = new();
+        private readonly Dictionary<string, IPrinter> printers = new();
 
         private ActionCableSubscription? subscription;
+        private Task? pollDevicesTask;
+        private CancellationTokenSource? cancellationTokenSource;
 
         /// <summary>
         /// Initializes a new instance of the <see cref="DeviceManager"/> class.
@@ -50,10 +53,11 @@ namespace Print3DCloud.Client
         /// <summary>
         /// Starts the device manager.
         /// </summary>
+        /// <param name="cancellationToken">A <see cref="CancellationToken"/> used to propagate notification that the operation should be canceled.</param>
         /// <returns>A <see cref="Task"/> that completes once the device manager has started looking for devices.</returns>
-        public Task StartAsync()
+        public Task StartAsync(CancellationToken cancellationToken)
         {
-            return this.actionCableClient.Subscribe(new ClientIdentifier(this.config.Guid, this.config.Key), this, CancellationToken.None);
+            return this.actionCableClient.Subscribe(new ClientIdentifier(this.config.ClientId, this.config.Secret), this, cancellationToken);
         }
 
         /// <inheritdoc/>
@@ -61,7 +65,20 @@ namespace Print3DCloud.Client
         {
             this.logger.LogInformation("Subscribed!");
             this.subscription = subscription;
-            this.PollDevices().ContinueWith(this.HandleTaskCompleted);
+
+            if (this.pollDevicesTask != null)
+            {
+                this.cancellationTokenSource?.Cancel();
+
+                this.pollDevicesTask.ContinueWith(t =>
+                {
+                    this.StartPollDevices();
+                });
+            }
+            else
+            {
+                this.StartPollDevices();
+            }
         }
 
         /// <inheritdoc/>
@@ -76,6 +93,12 @@ namespace Print3DCloud.Client
             this.logger.LogInformation("Unsubscribed!");
         }
 
+        private void StartPollDevices()
+        {
+            this.cancellationTokenSource = new CancellationTokenSource();
+            this.pollDevicesTask = this.PollDevices(this.cancellationTokenSource.Token).ContinueWith(this.HandleTaskCompleted);
+        }
+
         /// <summary>
         /// boink.
         /// </summary>
@@ -87,44 +110,80 @@ namespace Print3DCloud.Client
         {
             if (message.Printer.PrinterDefinition == null) return;
 
-            string deviceId = message.Printer.DeviceId;
-            string driver = message.Printer.PrinterDefinition.Driver;
+            string? hardwareIdentifier = message.Printer.Device?.HardwareIdentifier;
 
-            if (!this.discoveredSerialDevices.TryGetValue(deviceId, out SerialPortInfo portInfo)) return;
-
-            IGcodePrinter printer;
-
-            switch (driver)
+            if (string.IsNullOrEmpty(hardwareIdentifier))
             {
-                case "marlin":
-                    printer = new MarlinPrinter(this.serviceProvider.GetRequiredService<ILogger<MarlinPrinter>>(), portInfo.PortName);
-                    break;
-
-                default:
-                    this.logger.LogError($"Unexpected driver '{driver}'");
-                    return;
+                throw new InvalidOperationException("Hardware identifier is empty");
             }
 
-            this.printers.Add(deviceId, printer);
+            if (this.printers.ContainsKey(hardwareIdentifier))
+            {
+                this.logger.LogWarning($"Printer '{hardwareIdentifier}' is already configured; must disconnect/reconnect to apply changes");
+                return;
+            }
+
+            IPrinter printer;
+
+            if (this.discoveredSerialDevices.TryGetValue(hardwareIdentifier, out SerialPortInfo portInfo))
+            {
+                string driver = message.Printer.PrinterDefinition.Driver;
+
+                switch (driver)
+                {
+                    case "marlin":
+                        printer = new MarlinPrinter(this.serviceProvider.GetRequiredService<ILogger<MarlinPrinter>>(), portInfo.PortName);
+                        break;
+
+                    default:
+                        this.logger.LogError($"Unexpected driver '{driver}'");
+                        return;
+                }
+            }
+            else if (hardwareIdentifier.EndsWith("_dummy0"))
+            {
+                printer = new DummyPrinter();
+            }
+            else
+            {
+                this.logger.LogError("Unknown printer requested");
+                return;
+            }
+
+            this.printers.Add(hardwareIdentifier, printer);
 
             await printer.ConnectAsync(CancellationToken.None).ConfigureAwait(false);
 
-            if (message.Printer.PrinterDefinition.StartGcode != null)
+            if (printer is IGcodePrinter gcodePrinter)
             {
-                await printer.SendCommandBlockAsync(message.Printer.PrinterDefinition.StartGcode, CancellationToken.None).ConfigureAwait(false);
+                if (message.Printer.PrinterDefinition.StartGcode != null)
+                {
+                    await gcodePrinter.SendCommandBlockAsync(message.Printer.PrinterDefinition.StartGcode, CancellationToken.None).ConfigureAwait(false);
+                }
             }
+
+            this.logger.LogInformation($"Successfully configured printer '{hardwareIdentifier}'");
         }
 
-        private async Task PollDevices()
+        private async Task PollDevices(CancellationToken cancellationToken)
         {
+            if (this.subscription?.State != SubscriptionState.Subscribed) return;
+
+            // cancel if requested or if app is shutting down
+            cancellationToken = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken, this.hostApplicationLifetime.ApplicationStopping).Token;
+
+            if (Environment.GetCommandLineArgs().Contains("--dummy-printer"))
+            {
+                await this.subscription.Perform(new DeviceMessage("dummy0", this.config.ClientId + "_dummy0", false), CancellationToken.None).ConfigureAwait(false);
+            }
+
             var portInfos = new List<SerialPortInfo>();
 
             while (this.subscription?.State == SubscriptionState.Subscribed)
             {
                 portInfos.Clear();
 
-                // kill if app is shutting down
-                this.hostApplicationLifetime.ApplicationStopping.ThrowIfCancellationRequested();
+                cancellationToken.ThrowIfCancellationRequested();
 
                 // check for new devices
                 foreach (SerialPortInfo portInfo in SerialPortHelper.GetPorts())
@@ -135,9 +194,16 @@ namespace Print3DCloud.Client
 
                     this.logger.LogInformation("Found new device at " + portInfo.PortName);
 
-                    await this.subscription.Perform(new DeviceMessage(portInfo.PortName, portInfo.UniqueId, portInfo.IsPortableUniqueId), CancellationToken.None).ConfigureAwait(false);
-
-                    this.discoveredSerialDevices.Add(portInfo.UniqueId, portInfo);
+                    try
+                    {
+                        await this.subscription.Perform(new DeviceMessage(portInfo.PortName, portInfo.UniqueId, portInfo.IsPortableUniqueId), cancellationToken).ConfigureAwait(false);
+                        this.discoveredSerialDevices.Add(portInfo.UniqueId, portInfo);
+                    }
+                    catch (Exception ex)
+                    {
+                        this.logger.LogError("Could not send device discovery message");
+                        this.logger.LogError(ex.ToString());
+                    }
                 }
 
                 // check for lost devices
@@ -165,7 +231,17 @@ namespace Print3DCloud.Client
                     this.discoveredSerialDevices.Remove(deviceId);
                 }
 
-                await Task.Delay(5000).ConfigureAwait(false);
+                try
+                {
+                    await this.subscription.Perform(new PrinterStatesMessage(this.printers.ToDictionary(p => p.Key, p => p.Value.State)), cancellationToken);
+                }
+                catch (Exception ex)
+                {
+                    this.logger.LogError("Could not send printer states");
+                    this.logger.LogError(ex.ToString());
+                }
+
+                await Task.Delay(1000, cancellationToken).ConfigureAwait(false);
             }
 
             this.logger.LogInformation("Device polling loop exited");

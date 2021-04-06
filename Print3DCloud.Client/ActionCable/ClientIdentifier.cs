@@ -11,31 +11,31 @@ namespace Print3DCloud.Client.ActionCable
         /// <summary>
         /// Initializes a new instance of the <see cref="ClientIdentifier"/> class.
         /// </summary>
-        /// <param name="guid">GUID that identifies this client.</param>
-        /// <param name="key">The key used to authenticate the client when connecting to the server.</param>
-        public ClientIdentifier(Guid guid, string? key)
+        /// <param name="id">GUID that identifies this client.</param>
+        /// <param name="secret">The secret used to authenticate the client when connecting to the server.</param>
+        public ClientIdentifier(Guid id, string? secret)
             : base("ClientsChannel")
         {
-            this.Guid = guid;
-            this.Key = key;
+            this.Id = id;
+            this.Secret = secret;
         }
 
         /// <summary>
         /// Gets the GUID that identifies this client.
         /// </summary>
-        public Guid Guid { get; }
+        public Guid Id { get; }
 
         /// <summary>
-        /// Gets the key used to authenticate the client when connecting to the server.
+        /// Gets the secret used to authenticate the client when connecting to the server.
         /// </summary>
-        public string? Key { get; }
+        public string? Secret { get; }
 
         /// <inheritdoc/>
         public override bool Equals(Identifier? other)
         {
             if (other == null || other is not ClientIdentifier clientIdentifier) return false;
 
-            return this.ChannelName == clientIdentifier.ChannelName && this.Guid == clientIdentifier.Guid && this.Key == clientIdentifier.Key;
+            return this.ChannelName == clientIdentifier.ChannelName && this.Id == clientIdentifier.Id && this.Secret == clientIdentifier.Secret;
         }
     }
 }

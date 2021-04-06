@@ -8,14 +8,14 @@ namespace Print3DCloud.Client.ActionCable
     /// <summary>
     /// A message containing the states of all the printers connected to a client.
     /// </summary>
-    internal class PrinterStateMessage : ActionMessage
+    internal class PrinterStatesMessage : ActionMessage
     {
         /// <summary>
-        /// Initializes a new instance of the <see cref="PrinterStateMessage"/> class.
+        /// Initializes a new instance of the <see cref="PrinterStatesMessage"/> class.
         /// </summary>
         /// <param name="printerStates">The states of the printers connected to the client.</param>
-        public PrinterStateMessage(Dictionary<string, PrinterState> printerStates)
-            : base("printer_state")
+        public PrinterStatesMessage(Dictionary<string, PrinterState> printerStates)
+            : base("printer_states")
         {
             this.PrinterStates = printerStates;
             this.Timestamp = DateTimeOffset.UtcNow.ToUnixTimeMilliseconds();

@@ -1,5 +1,6 @@
 ﻿using System;
 using System.IO;
+using System.Security.Cryptography;
 using System.Text.Json;
 using System.Text.Json.Serialization;
 using System.Threading;
@@ -27,15 +28,21 @@ namespace Print3DCloud.Client.Configuration
         public static string FilePath => Path.Join(Directory.GetCurrentDirectory(), "config.json");
 
         /// <summary>
+        /// Gets or sets the server host (domain name + port).
+        /// </summary>
+        public string? ServerHost { get; set; }
+
+        /// <summary>
         /// Gets the client's GUID.
         /// </summary>
         [JsonInclude]
-        public Guid Guid { get; private set; } = Guid.NewGuid();
+        public Guid ClientId { get; private set; } = Guid.NewGuid();
 
         /// <summary>
-        /// Gets or sets the key used to authenticate with the server.
+        /// Gets the client's secret.
         /// </summary>
-        public string? Key { get; set; }
+        [JsonInclude]
+        public string Secret { get; private set; } = GenerateRandomBase64String();
 
         /// <summary>
         /// Loads the configuration from disk as an asynchronous task.
@@ -80,6 +87,13 @@ namespace Print3DCloud.Client.Configuration
             {
                 await JsonSerializer.SerializeAsync(fileStream, this, Options, cancellationToken).ConfigureAwait(false);
             }
+        }
+
+        private static string GenerateRandomBase64String()
+        {
+            var bytes = new byte[36];
+            new RNGCryptoServiceProvider().GetBytes(bytes);
+            return Convert.ToBase64String(bytes).Replace('+', '-').Replace('/', '_');
         }
     }
 }

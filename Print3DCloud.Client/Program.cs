@@ -26,10 +26,20 @@ namespace Print3DCloud.Client
             using IHost host = CreateHostBuilder(args, config).Build();
             IServiceProvider services = host.Services;
 
-            await services.GetRequiredService<ActionCableClient>().ConnectAsync(CancellationToken.None).ConfigureAwait(false);
-            await services.GetRequiredService<DeviceManager>().StartAsync().ConfigureAwait(false);
+            ILogger<Program> logger = services.GetRequiredService<ILogger<Program>>();
 
-            await host.RunAsync().ConfigureAwait(false);
+            if (string.IsNullOrWhiteSpace(config.ServerHost))
+            {
+                logger.LogError($"Server host is empty; shutting down");
+                return;
+            }
+
+            await services.GetRequiredService<ActionCableClient>().ConnectAsync(CancellationToken.None).ConfigureAwait(false);
+            await services.GetRequiredService<DeviceManager>().StartAsync(CancellationToken.None).ConfigureAwait(false);
+
+            await host.RunAsync();
+
+            await config.SaveAsync(CancellationToken.None);
         }
 
         private static IHostBuilder CreateHostBuilder(string[] args, Config config)
@@ -39,7 +49,17 @@ namespace Print3DCloud.Client
                 {
                     services.AddLogging(builder => builder.SetMinimumLevel(LogLevel.Trace).AddConsole());
 
-                    services.AddSingleton((serviceProvider) => new ActionCableClient(serviceProvider.GetRequiredService<ILogger<ActionCableClient>>(), new Uri("ws://localhost:3000/cable"), "3DCloud-Client"));
+                    services.AddSingleton((serviceProvider) =>
+                    {
+                        var config = serviceProvider.GetRequiredService<Config>();
+                        var actionCableClient = new ActionCableClient(serviceProvider.GetRequiredService<ILogger<ActionCableClient>>(), new Uri($"ws://{config.ServerHost}/cable"), "3DCloud-Client");
+
+                        actionCableClient.AdditionalHeaders.Add(("X-Client-Id", config.ClientId.ToString()));
+                        actionCableClient.AdditionalHeaders.Add(("X-Client-Secret", config.Secret));
+
+                        return actionCableClient;
+                    });
+
                     services.AddSingleton(config);
                     services.AddSingleton<DeviceManager>();
                 });
