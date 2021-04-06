@@ -1,6 +1,7 @@
 ﻿using System;
 using System.Collections.Generic;
 using System.IO;
+using System.Linq;
 using System.Net.WebSockets;
 using System.Text.Json;
 using System.Text.Json.Serialization;
@@ -73,6 +74,7 @@ namespace ActionCableSharp
             this.Uri = uri;
             this.Origin = origin;
             this.State = ClientState.Disconnected;
+            this.AdditionalHeaders = new List<(string, string?)>();
 
             var namingPolicy = new SnakeCaseNamingPolicy();
 
@@ -109,6 +111,11 @@ namespace ActionCableSharp
         public JsonSerializerOptions JsonSerializerOptions { get; }
 
         /// <summary>
+        /// Gets the additional headers used when initiating a connection.
+        /// </summary>
+        public List<(string, string?)> AdditionalHeaders { get; }
+
+        /// <summary>
         /// Gets the current connection state of the client.
         /// </summary>
         public ClientState State { get; private set; }
@@ -120,7 +127,9 @@ namespace ActionCableSharp
         /// <returns>A <see cref="Task"/> that completes once the client is connected.</returns>
         public Task ConnectAsync(CancellationToken cancellationToken)
         {
-            return this.ReconnectAsync(cancellationToken, true);
+            this.State = ClientState.Connecting;
+
+            return this.ReconnectAsync(cancellationToken);
         }
 
         /// <summary>
@@ -133,6 +142,13 @@ namespace ActionCableSharp
             if (this.webSocket?.IsConnected != true)
             {
                 return;
+            }
+
+            this.State = ClientState.Disconnecting;
+
+            foreach (var subscription in this.subscriptions)
+            {
+                subscription.Dispose();
             }
 
             await this.webSocket.CloseAsync(WebSocketCloseStatus.NormalClosure, "Closed by client", cancellationToken).ConfigureAwait(false);
@@ -168,6 +184,12 @@ namespace ActionCableSharp
         public void Dispose()
         {
             this.State = ClientState.Disconnected;
+
+            foreach (var subscription in this.subscriptions)
+            {
+                subscription.Dispose();
+            }
+
             this.webSocket?.Dispose();
         }
 
@@ -275,8 +297,13 @@ namespace ActionCableSharp
             }
         }
 
-        private async Task ReconnectAsync(CancellationToken cancellationToken, bool initial = false)
+        private async Task ReconnectAsync(CancellationToken cancellationToken)
         {
+            foreach (var subscription in this.subscriptions)
+            {
+                subscription.State = SubscriptionState.Pending;
+            }
+
             int reconnectDelayIndex = 0;
 
             while (this.webSocket?.IsConnected != true && !cancellationToken.IsCancellationRequested)
@@ -287,14 +314,18 @@ namespace ActionCableSharp
                 this.loopCancellationTokenSource?.Cancel();
                 this.loopCancellationTokenSource = null;
 
-                this.State = initial ? ClientState.Pending : ClientState.Reconnecting;
-
                 try
                 {
                     this.logger.LogInformation($"Connecting to {this.Uri}");
 
                     this.webSocket = this.webSocketFactory.CreateWebSocket();
                     this.webSocket.SetRequestHeader("Origin", this.Origin);
+
+                    foreach ((string headerName, string? headerValue) in this.AdditionalHeaders)
+                    {
+                        this.webSocket.SetRequestHeader(headerName, headerValue);
+                    }
+
                     await this.webSocket.ConnectAsync(this.Uri, cancellationToken).ConfigureAwait(false);
 
                     this.logger.LogInformation($"Connected to {this.Uri}");
@@ -305,7 +336,7 @@ namespace ActionCableSharp
                     this.shouldReconnectAfterClose = false;
 
                     // don't await these since they run until the connection is closed/interrupted
-                    _ = Task.Factory.StartNew(this.ReceiveLoop, TaskCreationOptions.LongRunning);
+                    _ = Task.Run(this.ReceiveLoop).ContinueWith(this.HandleReceiveLoopTaskCompleted);
 
                     // these run sequentially so might as well await each one individually
                     foreach (var subscription in this.subscriptions)
@@ -327,31 +358,9 @@ namespace ActionCableSharp
         {
             this.logger.LogInformation($"Started incoming message task");
 
-            try
+            while (this.loopCancellationTokenSource?.IsCancellationRequested == false && this.webSocket?.IsConnected == true)
             {
-                while (this.loopCancellationTokenSource?.IsCancellationRequested == false && this.webSocket?.IsConnected == true)
-                {
-                    await this.ReceiveMessage(this.loopCancellationTokenSource.Token).ConfigureAwait(false);
-                }
-            }
-            catch (TaskCanceledException)
-            {
-            }
-            catch (WebSocketException ex)
-            {
-                await this.HandleWebSocketException(ex, "Failed to receive message").ConfigureAwait(false);
-            }
-            catch (Exception ex)
-            {
-                this.logger.LogError(ex.Message);
-                this.logger.LogError(ex.StackTrace);
-            }
-
-            this.logger.LogInformation($"Incoming message task ended");
-
-            if (this.shouldReconnectAfterClose)
-            {
-                await this.ReconnectAsync(CancellationToken.None).ConfigureAwait(false);
+                await this.ReceiveMessage(this.loopCancellationTokenSource.Token).ConfigureAwait(false);
             }
         }
 
@@ -399,12 +408,26 @@ namespace ActionCableSharp
             }
         }
 
-        private async Task HandleWebSocketException(WebSocketException exception, string message)
+        private async Task HandleReceiveLoopTaskCompleted(Task task)
         {
-            this.logger.LogError(exception, message);
-            this.loopCancellationTokenSource?.Cancel();
-            this.State = ClientState.Reconnecting;
-            await this.ReconnectAsync(CancellationToken.None).ConfigureAwait(false);
+            this.logger.LogInformation($"Incoming message task ended");
+
+            if (this.shouldReconnectAfterClose || (task.IsFaulted && task.Exception!.InnerExceptions.Any(ex => ex is WebSocketException)))
+            {
+                this.State = ClientState.Reconnecting;
+                await this.ReconnectAsync(CancellationToken.None).ConfigureAwait(false);
+            }
+            else
+            {
+                try
+                {
+                    await this.DisconnectAsync(CancellationToken.None);
+                }
+                finally
+                {
+                    this.State = ClientState.Disconnected;
+                }
+            }
         }
     }
 }

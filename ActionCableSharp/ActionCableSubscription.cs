@@ -13,7 +13,7 @@ namespace ActionCableSharp
     /// <summary>
     /// Encapsulates a subscription created when subscribing to a channel through an <see cref="ActionCableClient"/> instance.
     /// </summary>
-    public class ActionCableSubscription
+    public class ActionCableSubscription : IDisposable
     {
         private readonly ActionCableClient client;
         private readonly IMessageReceiver receiver;
@@ -47,7 +47,7 @@ namespace ActionCableSharp
         /// <summary>
         /// Gets the subscription's current state.
         /// </summary>
-        public SubscriptionState State { get; private set; }
+        public SubscriptionState State { get; internal set; }
 
         /// <summary>
         /// Perform an action on the server.
@@ -57,6 +57,8 @@ namespace ActionCableSharp
         /// <returns>A <see cref="Task"/> that completes once the message has been sent.</returns>
         public Task Perform(ActionMessage data, CancellationToken cancellationToken)
         {
+            if (this.State != SubscriptionState.Subscribed) throw new InvalidOperationException("Not subscribed");
+
             return this.client.SendMessageAsync("message", this.Identifier, cancellationToken, data);
         }
 
@@ -71,6 +73,13 @@ namespace ActionCableSharp
 
             this.State = SubscriptionState.Unsubscribed;
 
+            this.receiver.Unsubscribed();
+        }
+
+        /// <inheritdoc/>
+        public void Dispose()
+        {
+            this.State = SubscriptionState.Unsubscribed;
             this.receiver.Unsubscribed();
         }
 

@@ -13,7 +13,7 @@
         /// <summary>
         /// The client is attempting an initial connection to the server.
         /// </summary>
-        Pending,
+        Connecting,
 
         /// <summary>
         /// Waiting for the server's welcome message to confirm connection was successful.
