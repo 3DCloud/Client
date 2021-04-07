@@ -2,7 +2,7 @@ using Xunit;
 
 namespace ActionCableSharp.Tests
 {
-    public class SnakeCaseNamingPolicyTest
+    public class SnakeCaseNamingPolicyTests
     {
         [Theory]
         [InlineData("Property", "property")]

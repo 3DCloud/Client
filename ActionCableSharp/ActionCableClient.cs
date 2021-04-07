@@ -96,49 +96,49 @@ namespace ActionCableSharp
         /// <summary>
         /// Event invoked when the client connects successfully to the server.
         /// </summary>
-        public event Action? Connected;
+        public virtual event Action? Connected;
 
         /// <summary>
         /// Event invoked when the client disconnects from the server.
         /// </summary>
-        public event Action? Disconnected;
+        public virtual event Action? Disconnected;
 
         /// <summary>
         /// Event invoked when a subscription-bound message is received.
         /// </summary>
-        internal event Action<ActionCableIncomingMessage>? MessageReceived;
+        internal virtual event Action<ActionCableIncomingMessage>? MessageReceived;
 
         /// <summary>
         /// Gets the URI to Action Cable mount path.
         /// </summary>
-        public Uri Uri { get; }
+        public virtual Uri Uri { get; }
 
         /// <summary>
         /// Gets the origin to use in the headers of requests. This should be in Action Cable's allowed_request_origins configuration option.
         /// </summary>
-        public string Origin { get; }
+        public virtual string Origin { get; }
 
         /// <summary>
         /// Gets the options used by the JSON serializer that reads/writes messages to the WebSocket.
         /// </summary>
-        public JsonSerializerOptions JsonSerializerOptions { get; }
+        public virtual JsonSerializerOptions JsonSerializerOptions { get; }
 
         /// <summary>
         /// Gets the additional headers used when initiating a connection.
         /// </summary>
-        public List<(string HeaderName, string? HeaderValue)> AdditionalHeaders { get; }
+        public virtual List<(string HeaderName, string? HeaderValue)> AdditionalHeaders { get; }
 
         /// <summary>
         /// Gets the current connection state of the client.
         /// </summary>
-        public ClientState State { get; private set; }
+        public virtual ClientState State { get; private set; }
 
         /// <summary>
         /// Initiates the WebSocket connection.
         /// </summary>
         /// <param name="cancellationToken">A <see cref="CancellationToken"/> used to propagate notification that the operation should be canceled.</param>
         /// <returns>A <see cref="Task"/> that completes once the client is connected.</returns>
-        public Task ConnectAsync(CancellationToken cancellationToken)
+        public virtual Task ConnectAsync(CancellationToken cancellationToken)
         {
             this.State = ClientState.Connecting;
 
@@ -150,7 +150,7 @@ namespace ActionCableSharp
         /// </summary>
         /// <param name="cancellationToken">A <see cref="CancellationToken"/> used to propagate notification that the operation should be canceled.</param>
         /// <returns>A <see cref="Task"/> that completes once the client is disconnected.</returns>
-        public async Task DisconnectAsync(CancellationToken cancellationToken)
+        public virtual async Task DisconnectAsync(CancellationToken cancellationToken)
         {
             if (this.State == ClientState.Disconnecting || this.State == ClientState.Disconnected) return;
 
@@ -170,13 +170,13 @@ namespace ActionCableSharp
         /// </summary>
         /// <param name="identifier">Identifier for the channel.</param>
         /// <returns>A reference to the <see cref="ActionCableSubscription"/> linked to the specified <paramref name="identifier"/>.</returns>
-        public ActionCableSubscription CreateSubscription(Identifier identifier)
+        public virtual ActionCableSubscription CreateSubscription(Identifier identifier)
         {
             return new ActionCableSubscription(this, identifier);
         }
 
         /// <inheritdoc/>
-        public void Dispose()
+        public virtual void Dispose()
         {
             this.State = ClientState.Disconnected;
             this.webSocket?.Dispose();
@@ -191,7 +191,7 @@ namespace ActionCableSharp
         /// <param name="cancellationToken">A <see cref="CancellationToken"/> used to propagate notification that the operation should be canceled.</param>
         /// <param name="data">Optional additional data.</param>
         /// <returns>A <see cref="Task"/> that completes once the message has been sent to the server.</returns>
-        internal async Task SendMessageAsync(string command, Identifier identifier, CancellationToken cancellationToken, object? data = null)
+        internal virtual async Task SendMessageAsync(string command, Identifier identifier, CancellationToken cancellationToken, object? data = null)
         {
             var message = new ActionCableOutgoingMessage
             {
@@ -224,12 +224,8 @@ namespace ActionCableSharp
             this.semaphore.Release();
         }
 
-        /// <summary>
-        /// Waits for and handles a single message received on the WebSocket.
-        /// </summary>
-        /// <param name="cancellationToken">A <see cref="CancellationToken"/> used to propagate notification that the operation should be canceled.</param>
-        /// <returns>A <see cref="Task"/> that completes once a message has been processed.</returns>
-        internal async Task ReceiveMessage(CancellationToken cancellationToken)
+        /// <inheritdoc/>
+        internal virtual async Task ReceiveMessage(CancellationToken cancellationToken)
         {
             if (this.webSocket?.IsConnected != true)
             {
