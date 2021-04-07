@@ -82,7 +82,7 @@ namespace Print3DCloud.Client
         }
 
         /// <inheritdoc/>
-        public void Rejected(ActionCableSubscription subscription)
+        public void Rejected()
         {
             this.logger.LogInformation("Rejected!");
         }
@@ -100,7 +100,7 @@ namespace Print3DCloud.Client
         }
 
         /// <summary>
-        /// boink.
+        /// Message indicating a device has been configured as a printer.
         /// </summary>
         /// <param name="message">The received message.</param>
         /// <returns>A <see cref="Task"/> that completes once the message has been processed.</returns>
@@ -117,52 +117,44 @@ namespace Print3DCloud.Client
                 throw new InvalidOperationException("Hardware identifier is empty");
             }
 
-            if (this.printers.ContainsKey(hardwareIdentifier))
+            if (!this.printers.TryGetValue(hardwareIdentifier, out IPrinter? printer))
             {
-                this.logger.LogWarning($"Printer '{hardwareIdentifier}' is already configured; must disconnect/reconnect to apply changes");
-                return;
-            }
+                this.logger.LogInformation($"Connecting to printer '{hardwareIdentifier}'");
 
-            IPrinter printer;
-
-            if (this.discoveredSerialDevices.TryGetValue(hardwareIdentifier, out SerialPortInfo portInfo))
-            {
-                string driver = message.Printer.PrinterDefinition.Driver;
-
-                switch (driver)
+                if (this.discoveredSerialDevices.TryGetValue(hardwareIdentifier, out SerialPortInfo portInfo))
                 {
-                    case "marlin":
-                        printer = new MarlinPrinter(this.serviceProvider.GetRequiredService<ILogger<MarlinPrinter>>(), portInfo.PortName);
-                        break;
+                    string driver = message.Printer.PrinterDefinition.Driver;
 
-                    default:
-                        this.logger.LogError($"Unexpected driver '{driver}'");
-                        return;
+                    switch (driver)
+                    {
+                        case "marlin":
+                            printer = new MarlinPrinter(this.serviceProvider.GetRequiredService<ILogger<MarlinPrinter>>(), portInfo.PortName);
+                            break;
+
+                        default:
+                            this.logger.LogError($"Unexpected driver '{driver}'");
+                            return;
+                    }
                 }
-            }
-            else if (hardwareIdentifier.EndsWith("_dummy0"))
-            {
-                printer = new DummyPrinter();
+                else if (hardwareIdentifier.EndsWith("_dummy0"))
+                {
+                    printer = new DummyPrinter(this.serviceProvider.GetRequiredService<ILogger<DummyPrinter>>());
+                }
+                else
+                {
+                    this.logger.LogError("Unknown printer requested");
+                    return;
+                }
+
+                this.printers.Add(hardwareIdentifier, printer);
             }
             else
             {
-                this.logger.LogError("Unknown printer requested");
-                return;
+                this.logger.LogInformation($"Printer '{hardwareIdentifier}' is already connected");
             }
 
-            this.printers.Add(hardwareIdentifier, printer);
-
-            await printer.ConnectAsync(CancellationToken.None).ConfigureAwait(false);
-
-            if (printer is IGcodePrinter gcodePrinter)
-            {
-                if (message.Printer.PrinterDefinition.StartGcode != null)
-                {
-                    await gcodePrinter.SendCommandBlockAsync(message.Printer.PrinterDefinition.StartGcode, CancellationToken.None).ConfigureAwait(false);
-                }
-            }
-
-            this.logger.LogInformation($"Successfully configured printer '{hardwareIdentifier}'");
+            var printerMessageForwarder = new PrinterMessageForwarder(this.serviceProvider.GetRequiredService<ILogger<PrinterMessageForwarder>>(), printer);
+            await this.actionCableClient.Subscribe(new PrinterIdentifier(hardwareIdentifier), printerMessageForwarder, CancellationToken.None);
         }
 
         private async Task PollDevices(CancellationToken cancellationToken)
@@ -217,7 +209,7 @@ namespace Print3DCloud.Client
                     {
                         try
                         {
-                            await printer.DisconnectAsync().ConfigureAwait(false);
+                            printer.Dispose();
                         }
                         catch (Exception ex)
                         {
@@ -231,17 +223,7 @@ namespace Print3DCloud.Client
                     this.discoveredSerialDevices.Remove(deviceId);
                 }
 
-                try
-                {
-                    await this.subscription.Perform(new PrinterStatesMessage(this.printers.ToDictionary(p => p.Key, p => p.Value.State)), cancellationToken);
-                }
-                catch (Exception ex)
-                {
-                    this.logger.LogError("Could not send printer states");
-                    this.logger.LogError(ex.ToString());
-                }
-
-                await Task.Delay(1000, cancellationToken).ConfigureAwait(false);
+                await Task.Delay(5000, cancellationToken).ConfigureAwait(false);
             }
 
             this.logger.LogInformation("Device polling loop exited");

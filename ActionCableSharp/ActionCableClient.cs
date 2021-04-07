@@ -356,11 +356,15 @@ namespace ActionCableSharp
 
         private async Task ReceiveLoop()
         {
+            if (this.loopCancellationTokenSource == null) return;
+
+            CancellationToken cancellationToken = this.loopCancellationTokenSource.Token;
+
             this.logger.LogInformation($"Started incoming message task");
 
-            while (this.loopCancellationTokenSource?.IsCancellationRequested == false && this.webSocket?.IsConnected == true)
+            while (this.webSocket?.IsConnected == true)
             {
-                await this.ReceiveMessage(this.loopCancellationTokenSource.Token).ConfigureAwait(false);
+                await this.ReceiveMessage(cancellationToken).ConfigureAwait(false);
             }
         }
 
@@ -391,7 +395,8 @@ namespace ActionCableSharp
                 case MessageType.ConfirmSubscription:
                 case MessageType.RejectSubscription:
                 case MessageType.None:
-                    foreach (var subscription in this.subscriptions)
+                    // create a copy of subscriptions to avoid race condition
+                    foreach (var subscription in this.subscriptions.ToArray())
                     {
                         try
                         {
@@ -410,7 +415,19 @@ namespace ActionCableSharp
 
         private async Task HandleReceiveLoopTaskCompleted(Task task)
         {
-            this.logger.LogInformation($"Incoming message task ended");
+            if (task.IsCompletedSuccessfully)
+            {
+                this.logger.LogInformation($"Incoming message task ended");
+            }
+            else if (task.IsFaulted)
+            {
+                this.logger.LogError($"Incoming message task errored");
+                this.logger.LogError(task.Exception!.ToString());
+            }
+            else if (task.IsCanceled)
+            {
+                this.logger.LogWarning($"Incoming message task canceled");
+            }
 
             if (this.shouldReconnectAfterClose || (task.IsFaulted && task.Exception!.InnerExceptions.Any(ex => ex is WebSocketException)))
             {

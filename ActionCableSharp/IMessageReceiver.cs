@@ -14,8 +14,7 @@
         /// <summary>
         /// Invoked when the subscription has been rejected by the server.
         /// </summary>
-        /// <param name="subscription">The <see cref="ActionCableSubscription"/> that triggered this method invocation.</param>
-        void Rejected(ActionCableSubscription subscription);
+        void Rejected();
 
         /// <summary>
         /// Invoked when the subscription has been removed.

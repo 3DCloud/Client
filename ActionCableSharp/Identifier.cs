@@ -30,12 +30,7 @@ namespace ActionCableSharp
         /// <returns>Whether both <see cref="Identifier"/> instances are equal or not.</returns>
         public virtual bool Equals(Identifier? other)
         {
-            if (other == null)
-            {
-                return false;
-            }
-
-            return this.ChannelName == other.ChannelName;
+            return ReferenceEquals(this, other);
         }
     }
 }

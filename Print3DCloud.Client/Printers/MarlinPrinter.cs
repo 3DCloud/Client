@@ -15,7 +15,7 @@ namespace Print3DCloud.Client.Printers
     /// <summary>
     /// Printer driver for printers using Marlin (or derived) firmware that send G-code via serial.
     /// </summary>
-    internal class MarlinPrinter : IGcodePrinter
+    internal class MarlinPrinter : IPrinter
     {
         private const string PrinterAliveLine = "echo:start";
         private const string CommandExpectedResponse = "ok";
@@ -61,6 +61,12 @@ namespace Print3DCloud.Client.Printers
             this.hotendTemperatures = new List<TemperatureSensor>();
             this.globalCancellationTokenSource = new CancellationTokenSource();
         }
+
+        /// <inheritdoc/>
+        public event Action<PrinterState>? StateChanged;
+
+        /// <inheritdoc/>
+        public event Action<string>? LogMessage;
 
         /// <summary>
         /// Gets the name of the serial port.
@@ -308,6 +314,7 @@ namespace Print3DCloud.Client.Printers
             string? line = await Task.Run(this.serialPort.ReadLine).ConfigureAwait(false);
 
             this.logger.LogTrace("RECV: " + line);
+            this.LogMessage?.Invoke("RECV: " + line);
 
             return line;
         }
@@ -320,6 +327,7 @@ namespace Print3DCloud.Client.Printers
             }
 
             this.logger.LogTrace("SEND: " + line);
+            this.LogMessage?.Invoke("SEND: " + line);
 
             return Task.Run(() => this.serialPort.WriteLine(line));
         }
@@ -329,6 +337,8 @@ namespace Print3DCloud.Client.Printers
             while (this.IsConnected)
             {
                 await this.SendCommandAsync(ReportTemperaturesCommand, CancellationToken.None).ConfigureAwait(false);
+
+                this.StateChanged?.Invoke(this.State);
 
                 await Task.Delay(1000, this.globalCancellationTokenSource.Token).ConfigureAwait(false);
             }

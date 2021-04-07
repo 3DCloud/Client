@@ -14,7 +14,7 @@ namespace Print3DCloud.Client.ActionCable
         /// <param name="id">GUID that identifies this client.</param>
         /// <param name="secret">The secret used to authenticate the client when connecting to the server.</param>
         public ClientIdentifier(Guid id, string? secret)
-            : base("ClientsChannel")
+            : base("ClientChannel")
         {
             this.Id = id;
             this.Secret = secret;

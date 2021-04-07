@@ -106,7 +106,7 @@ namespace ActionCableSharp
 
                 case MessageType.RejectSubscription:
                     this.State = SubscriptionState.Rejected;
-                    this.receiver.Rejected(this);
+                    this.receiver.Rejected();
                     return Task.CompletedTask;
 
                 default:
@@ -164,7 +164,7 @@ namespace ActionCableSharp
 
             if (!this.actionMethods.TryGetValue(actionName, out ActionMethod? actionMethod))
             {
-                throw new InvalidOperationException($"No method for action '{actionName}'");
+                throw new InvalidOperationException($"No method for action '{actionName}' on type '{this.receiverType.FullName}'");
             }
 
             var args = new List<object?>();
