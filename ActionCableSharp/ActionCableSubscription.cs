@@ -5,7 +5,6 @@ using System.Text.Json;
 using System.Threading;
 using System.Threading.Tasks;
 using ActionCableSharp.Internal;
-using Microsoft.Extensions.Logging;
 
 namespace ActionCableSharp
 {
