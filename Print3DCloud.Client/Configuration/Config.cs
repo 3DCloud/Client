@@ -55,16 +55,9 @@ namespace Print3DCloud.Client.Configuration
 
             if (File.Exists(FilePath))
             {
-                try
+                await using (FileStream fileStream = File.OpenRead(FilePath))
                 {
-                    await using (FileStream fileStream = File.OpenRead(FilePath))
-                    {
-                        config = await JsonSerializer.DeserializeAsync<Config>(fileStream, Options, cancellationToken).ConfigureAwait(false);
-                    }
-                }
-                catch (JsonException ex)
-                {
-                    Console.WriteLine(ex);
+                    config = await JsonSerializer.DeserializeAsync<Config>(fileStream, Options, cancellationToken).ConfigureAwait(false);
                 }
             }
 

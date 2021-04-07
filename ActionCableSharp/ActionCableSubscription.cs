@@ -86,7 +86,6 @@ namespace ActionCableSharp
         {
             if (this.client.State == ClientState.Connected)
             {
-                Console.WriteLine("Subscribe " + this.Identifier);
                 await this.client.SendMessageAsync("subscribe", this.Identifier, cancellationToken).ConfigureAwait(false);
             }
 
