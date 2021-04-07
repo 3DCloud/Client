@@ -81,8 +81,6 @@ namespace ActionCableSharp.Tests
             var mockWebSocketFactory = new Mock<IWebSocketFactory>();
             mockWebSocketFactory.Setup(f => f.CreateWebSocket()).Returns(mockWebSocket.Object);
 
-            var mockMessageReceiver = new Mock<IMessageReceiver>();
-
             var client = new ActionCableClient(uri, "dummy", mockWebSocketFactory.Object);
             var cancellationToken = new CancellationToken(false);
             var identifier = new Identifier("channel_name");
@@ -93,11 +91,13 @@ namespace ActionCableSharp.Tests
                     Command = "subscribe",
                     Identifier = JsonSerializer.Serialize(identifier, client.JsonSerializerOptions),
                     Data = null,
-                }, client.JsonSerializerOptions);
+                },
+                client.JsonSerializerOptions);
 
             // Act
             await client.ConnectAsync(CancellationToken.None).ConfigureAwait(false);
-            ActionCableSubscription subscription = await client.Subscribe(identifier, mockMessageReceiver.Object, cancellationToken).ConfigureAwait(false);
+            ActionCableSubscription subscription = client.CreateSubscription(identifier);
+            await subscription.Subscribe(CancellationToken.None);
 
             // Assert
             Assert.Equal("channel_name", subscription.Identifier.ChannelName);
@@ -119,14 +119,13 @@ namespace ActionCableSharp.Tests
             var mockWebSocketFactory = new Mock<IWebSocketFactory>();
             mockWebSocketFactory.Setup(f => f.CreateWebSocket()).Returns(mockWebSocket.Object);
 
-            var mockMessageReceiver = new Mock<IMessageReceiver>();
-
             var client = new ActionCableClient(uri, "dummy", mockWebSocketFactory.Object);
             var identifier = new Identifier("channel_name");
 
             // Act
             await client.ConnectAsync(CancellationToken.None).ConfigureAwait(false);
-            ActionCableSubscription subscription = await client.Subscribe(identifier,  mockMessageReceiver.Object, CancellationToken.None).ConfigureAwait(false);
+            ActionCableSubscription subscription = client.CreateSubscription(identifier);
+            await subscription.Subscribe(CancellationToken.None).ConfigureAwait(false);
             await client.DisconnectAsync(CancellationToken.None).ConfigureAwait(false);
             await client.ConnectAsync(CancellationToken.None).ConfigureAwait(false);
 
@@ -143,13 +142,12 @@ namespace ActionCableSharp.Tests
 
             var mockWebSocketFactory = new Mock<IWebSocketFactory>();
 
-            var mockMessageReceiver = new Mock<IMessageReceiver>();
-
             var client = new ActionCableClient(uri, "dummy", mockWebSocketFactory.Object);
             var identifier = new Identifier("channel_name");
+            ActionCableSubscription subscription = client.CreateSubscription(identifier);
 
             // Act
-            await Assert.ThrowsAsync<InvalidOperationException>(() => client.Subscribe(identifier, mockMessageReceiver.Object, CancellationToken.None)).ConfigureAwait(false);
+            await Assert.ThrowsAsync<InvalidOperationException>(() => subscription.Subscribe(CancellationToken.None)).ConfigureAwait(false);
         }
 
         [Fact]
@@ -164,8 +162,6 @@ namespace ActionCableSharp.Tests
             var mockWebSocketFactory = new Mock<IWebSocketFactory>();
             mockWebSocketFactory.Setup(f => f.CreateWebSocket()).Returns(mockWebSocket.Object);
 
-            var mockMessageReceiver = new Mock<IMessageReceiver>();
-
             var client = new ActionCableClient(uri, "dummy", mockWebSocketFactory.Object);
             var cancellationToken = new CancellationToken(false);
             var identifier = new Identifier("channel_name");
@@ -175,11 +171,13 @@ namespace ActionCableSharp.Tests
                 {
                     Command = "unsubscribe",
                     Identifier = JsonSerializer.Serialize(identifier, client.JsonSerializerOptions),
-                }, client.JsonSerializerOptions);
+                },
+                client.JsonSerializerOptions);
 
             // Act
             await client.ConnectAsync(CancellationToken.None).ConfigureAwait(false);
-            ActionCableSubscription subscription = await client.Subscribe(identifier, mockMessageReceiver.Object, CancellationToken.None).ConfigureAwait(false);
+            ActionCableSubscription subscription = client.CreateSubscription(identifier);
+            await subscription.Subscribe(CancellationToken.None).ConfigureAwait(false);
             await subscription.Unsubscribe(cancellationToken).ConfigureAwait(false);
 
             // Assert
@@ -198,8 +196,6 @@ namespace ActionCableSharp.Tests
             var mockWebSocketFactory = new Mock<IWebSocketFactory>();
             mockWebSocketFactory.Setup(f => f.CreateWebSocket()).Returns(mockWebSocket.Object);
 
-            var mockMessageReceiver = new Mock<IMessageReceiver>();
-
             var client = new ActionCableClient(uri, "dummy", mockWebSocketFactory.Object);
             var cancellationToken = new CancellationToken(false);
             var identifier = new Identifier("channel_name");
@@ -211,11 +207,13 @@ namespace ActionCableSharp.Tests
                     Command = "message",
                     Identifier = JsonSerializer.Serialize(identifier, client.JsonSerializerOptions),
                     Data = JsonSerializer.Serialize(data, client.JsonSerializerOptions),
-                }, client.JsonSerializerOptions);
+                },
+                client.JsonSerializerOptions);
 
             // Act
             await client.ConnectAsync(CancellationToken.None).ConfigureAwait(false);
-            ActionCableSubscription subscription = await client.Subscribe(identifier, mockMessageReceiver.Object, CancellationToken.None).ConfigureAwait(false);
+            ActionCableSubscription subscription = client.CreateSubscription(identifier);
+            await subscription.Subscribe(CancellationToken.None).ConfigureAwait(false);
             await subscription.Perform(data, cancellationToken).ConfigureAwait(false);
 
             // Assert
@@ -235,14 +233,13 @@ namespace ActionCableSharp.Tests
             var mockWebSocketFactory = new Mock<IWebSocketFactory>();
             mockWebSocketFactory.Setup(f => f.CreateWebSocket()).Returns(mockWebSocket.Object);
 
-            var mockMessageReceiver = new Mock<IMessageReceiver>();
-
             var client = new ActionCableClient(uri, "dummy", mockWebSocketFactory.Object);
             var cancellationToken = new CancellationToken(false);
 
             // Act
             await client.ConnectAsync(CancellationToken.None).ConfigureAwait(false);
-            ActionCableSubscription subscription = await client.Subscribe(new Identifier("channel_name"), mockMessageReceiver.Object, CancellationToken.None).ConfigureAwait(false);
+            ActionCableSubscription subscription = client.CreateSubscription(new Identifier("channel_name"));
+            await subscription.Subscribe(CancellationToken.None).ConfigureAwait(false);
             await subscription.Perform(new SampleMessage(new string('a', 10_000)), cancellationToken).ConfigureAwait(false);
 
             // Assert

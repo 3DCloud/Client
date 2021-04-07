@@ -52,7 +52,7 @@ namespace Print3DCloud.Client.Printers
             this.logger.LogInformation("Connected");
             this.LogMessage?.Invoke("Connected");
             this.cancellationTokenSource = new CancellationTokenSource();
-            this.connectedTask = Task.Run(this.StatusLoop).ContinueWith(this.HandleStatusLoopTaskCompleted);
+            this.connectedTask = Task.Run(this.StatusLoop, cancellationToken).ContinueWith(this.HandleStatusLoopTaskCompleted, CancellationToken.None);
             return Task.CompletedTask;
         }
 

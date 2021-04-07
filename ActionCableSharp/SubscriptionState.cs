@@ -6,6 +6,11 @@
     public enum SubscriptionState
     {
         /// <summary>
+        /// The subscription is not active.
+        /// </summary>
+        Unsubscribed,
+
+        /// <summary>
         /// Waiting for confirmation from the server that this subscription is active.
         /// </summary>
         Pending,
@@ -19,10 +24,5 @@
         /// The subscription was rejected by the server. No messages will be exchanged.
         /// </summary>
         Rejected,
-
-        /// <summary>
-        /// The subscription is no longer active.
-        /// </summary>
-        Unsubscribed,
     }
 }

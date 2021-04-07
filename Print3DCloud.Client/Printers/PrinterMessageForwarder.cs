@@ -1,8 +1,8 @@
 ﻿using System;
+using System.Collections.Generic;
 using System.Threading;
 using System.Threading.Tasks;
 using ActionCableSharp;
-using Microsoft.Extensions.Logging;
 using Print3DCloud.Client.ActionCable;
 
 namespace Print3DCloud.Client.Printers
@@ -10,21 +10,19 @@ namespace Print3DCloud.Client.Printers
     /// <summary>
     /// Interface between an <see cref="IPrinter"/> instance and an <see cref="ActionCableSubscription"/> instance.
     /// </summary>
-    internal class PrinterMessageForwarder : IMessageReceiver
+    internal class PrinterMessageForwarder : IDisposable
     {
-        private readonly ILogger<PrinterMessageForwarder> logger;
-
-        private ActionCableSubscription? subscription;
-
         /// <summary>
         /// Initializes a new instance of the <see cref="PrinterMessageForwarder"/> class.
         /// </summary>
-        /// <param name="logger">The <see cref="ILogger{TCategoryName}"/> to use.</param>
         /// <param name="printer">The <see cref="IPrinter"/> to use.</param>
-        public PrinterMessageForwarder(ILogger<PrinterMessageForwarder> logger, IPrinter printer)
+        /// <param name="subscription/">The <see cref="ActionCableSubscription"/> to use.</param>
+        public PrinterMessageForwarder(IPrinter printer, ActionCableSubscription subscription)
         {
             this.Printer = printer;
-            this.logger = logger;
+            this.Subscription = subscription;
+
+            this.Subscription.RegisterCallback<SendCommandMessage>("send_command", this.SendCommand);
         }
 
         /// <summary>
@@ -32,66 +30,58 @@ namespace Print3DCloud.Client.Printers
         /// </summary>
         public IPrinter Printer { get; }
 
-        /// <inheritdoc/>
-        public async void Subscribed(ActionCableSubscription subscription)
-        {
-            this.subscription = subscription;
+        /// <summary>
+        /// Gets the <see cref="ActionCableSubscription"/> associated with this instance.
+        /// </summary>
+        public ActionCableSubscription Subscription { get; }
 
+        /// <summary>
+        /// Subscribes to the Printer channel with this printer's ID and connects to the printer (if necessary).
+        /// </summary>
+        /// <param name="cancellationToken">A <see cref="CancellationToken"/> used to propagate notification that the operation should be canceled.</param>
+        /// <returns>A <see cref="Task"/> that completes once the subscription request has been sent and the printer is connected.</returns>
+        public async Task SubscribeAndConnect(CancellationToken cancellationToken)
+        {
             this.Printer.LogMessage += this.Printer_LogMessage;
             this.Printer.StateChanged += this.Printer_StateChanged;
 
+            await this.Subscription.Subscribe(cancellationToken);
+
             if (!this.Printer.State.IsConnected)
             {
-                try
-                {
-                    await this.Printer.ConnectAsync(CancellationToken.None).ConfigureAwait(false);
-                }
-                catch (Exception)
-                {
-                    try
-                    {
-                        await this.subscription.Unsubscribe(CancellationToken.None);
-                    }
-                    finally
-                    {
-                        this.subscription.Dispose();
-                    }
-                }
+                await this.Printer.ConnectAsync(cancellationToken).ConfigureAwait(false);
             }
         }
 
         /// <inheritdoc/>
-        public void Rejected()
-        {
-        }
-
-        /// <inheritdoc/>
-        public void Unsubscribed()
+        public void Dispose()
         {
             this.Printer.LogMessage -= this.Printer_LogMessage;
             this.Printer.StateChanged -= this.Printer_StateChanged;
-        }
 
-        [ActionMethod]
-        private Task SendCommand(string command)
-        {
-            if (string.IsNullOrWhiteSpace(command)) return Task.CompletedTask;
-
-            return this.Printer.SendCommandAsync(command, CancellationToken.None);
+            this.Printer.Dispose();
+            this.Subscription.Dispose();
         }
 
         private void Printer_LogMessage(string message)
         {
-            if (this.subscription?.State != SubscriptionState.Subscribed) return;
+            if (this.Subscription?.State != SubscriptionState.Subscribed) return;
 
-            this.subscription.Perform(new PrinterMessage(message), CancellationToken.None);
+            this.Subscription.Perform(new PrinterMessage(message), CancellationToken.None);
         }
 
         private void Printer_StateChanged(PrinterState state)
         {
-            if (this.subscription?.State != SubscriptionState.Subscribed) return;
+            if (this.Subscription?.State != SubscriptionState.Subscribed) return;
 
-            this.subscription.Perform(new PrinterStateMessage(state), CancellationToken.None);
+            this.Subscription.Perform(new PrinterStateMessage(state), CancellationToken.None);
+        }
+
+        private async void SendCommand(SendCommandMessage message)
+        {
+            if (string.IsNullOrWhiteSpace(message.Command)) return;
+
+            await this.Printer.SendCommandAsync(message.Command, CancellationToken.None);
         }
     }
 }

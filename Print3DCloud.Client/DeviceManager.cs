@@ -1,6 +1,5 @@
 ﻿using System;
 using System.Collections.Generic;
-using System.Diagnostics.CodeAnalysis;
 using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
@@ -18,7 +17,7 @@ namespace Print3DCloud.Client
     /// <summary>
     /// Manages discovery of devices and assignment of devices to printers.
     /// </summary>
-    internal class DeviceManager : IMessageReceiver
+    internal class DeviceManager
     {
         private readonly ILogger<DeviceManager> logger;
         private readonly IServiceProvider serviceProvider;
@@ -26,11 +25,10 @@ namespace Print3DCloud.Client
         private readonly Config config;
         private readonly IHostApplicationLifetime hostApplicationLifetime;
 
+        private readonly ActionCableSubscription subscription;
         private readonly Dictionary<string, SerialPortInfo> discoveredSerialDevices = new();
-        private readonly Dictionary<string, IPrinter> printers = new();
+        private readonly Dictionary<string, PrinterMessageForwarder> printerMessageForwarders = new();
 
-        private ActionCableSubscription? subscription;
-        private Task? pollDevicesTask;
         private CancellationTokenSource? cancellationTokenSource;
 
         /// <summary>
@@ -48,6 +46,13 @@ namespace Print3DCloud.Client
             this.actionCableClient = actionCableClient;
             this.config = config;
             this.hostApplicationLifetime = hostApplicationLifetime;
+
+            this.subscription = this.actionCableClient.CreateSubscription(new ClientIdentifier(this.config.ClientId, this.config.Secret));
+
+            this.subscription.Connected += this.Subscription_Connected;
+            this.subscription.Disconnected += this.Subscription_Disconnected;
+
+            this.subscription.RegisterCallback<PrinterConfigurationMessage>("printer_configuration", this.PrinterConfiguration);
         }
 
         /// <summary>
@@ -57,104 +62,75 @@ namespace Print3DCloud.Client
         /// <returns>A <see cref="Task"/> that completes once the device manager has started looking for devices.</returns>
         public Task StartAsync(CancellationToken cancellationToken)
         {
-            return this.actionCableClient.Subscribe(new ClientIdentifier(this.config.ClientId, this.config.Secret), this, cancellationToken);
+            return this.subscription.Subscribe(cancellationToken);
         }
 
-        /// <inheritdoc/>
-        public void Subscribed(ActionCableSubscription subscription)
+        private void Subscription_Connected()
         {
             this.logger.LogInformation("Subscribed!");
-            this.subscription = subscription;
 
-            if (this.pollDevicesTask != null)
-            {
-                this.cancellationTokenSource?.Cancel();
-
-                this.pollDevicesTask.ContinueWith(t =>
-                {
-                    this.StartPollDevices();
-                });
-            }
-            else
-            {
-                this.StartPollDevices();
-            }
+            this.cancellationTokenSource = new CancellationTokenSource();
+            _ = this.PollDevices(this.cancellationTokenSource.Token).ContinueWith(this.HandleTaskCompleted);
         }
 
-        /// <inheritdoc/>
-        public void Rejected()
-        {
-            this.logger.LogInformation("Rejected!");
-        }
-
-        /// <inheritdoc/>
-        public void Unsubscribed()
+        private void Subscription_Disconnected()
         {
             this.logger.LogInformation("Unsubscribed!");
-        }
-
-        private void StartPollDevices()
-        {
-            this.cancellationTokenSource = new CancellationTokenSource();
-            this.pollDevicesTask = this.PollDevices(this.cancellationTokenSource.Token).ContinueWith(this.HandleTaskCompleted);
+            this.cancellationTokenSource?.Cancel();
         }
 
         /// <summary>
         /// Message indicating a device has been configured as a printer.
         /// </summary>
         /// <param name="message">The received message.</param>
-        /// <returns>A <see cref="Task"/> that completes once the message has been processed.</returns>
-        [ActionMethod]
-        [SuppressMessage("CodeQuality", "IDE0051:Remove unused private member", Justification = "Called via ActionCableClient")]
-        private async Task PrinterConfiguration(PrinterConfigurationMessage message)
+        private async void PrinterConfiguration(PrinterConfigurationMessage message)
         {
-            if (message.Printer.PrinterDefinition == null) return;
+            if (message.Printer.PrinterDefinition == null || message.Printer.Device == null) return;
 
-            string? hardwareIdentifier = message.Printer.Device?.HardwareIdentifier;
+            string hardwareIdentifier = message.Printer.Device.HardwareIdentifier;
 
-            if (string.IsNullOrEmpty(hardwareIdentifier))
+            if (this.printerMessageForwarders.ContainsKey(hardwareIdentifier))
             {
-                throw new InvalidOperationException("Hardware identifier is empty");
+                this.logger.LogInformation($"Printer '{hardwareIdentifier}' is already connected");
+                return;
             }
 
-            if (!this.printers.TryGetValue(hardwareIdentifier, out IPrinter? printer))
+            IPrinter printer;
+
+            this.logger.LogInformation($"Attempting to set up printer '{hardwareIdentifier}'");
+
+            if (this.discoveredSerialDevices.TryGetValue(hardwareIdentifier, out SerialPortInfo portInfo))
             {
-                this.logger.LogInformation($"Connecting to printer '{hardwareIdentifier}'");
+                string driver = message.Printer.PrinterDefinition.Driver;
 
-                if (this.discoveredSerialDevices.TryGetValue(hardwareIdentifier, out SerialPortInfo portInfo))
+                switch (driver)
                 {
-                    string driver = message.Printer.PrinterDefinition.Driver;
+                    case "marlin":
+                        printer = new MarlinPrinter(this.serviceProvider.GetRequiredService<ILogger<MarlinPrinter>>(), portInfo.PortName);
+                        break;
 
-                    switch (driver)
-                    {
-                        case "marlin":
-                            printer = new MarlinPrinter(this.serviceProvider.GetRequiredService<ILogger<MarlinPrinter>>(), portInfo.PortName);
-                            break;
-
-                        default:
-                            this.logger.LogError($"Unexpected driver '{driver}'");
-                            return;
-                    }
+                    default:
+                        this.logger.LogError($"Unexpected driver '{driver}'");
+                        return;
                 }
-                else if (hardwareIdentifier.EndsWith("_dummy0"))
-                {
-                    printer = new DummyPrinter(this.serviceProvider.GetRequiredService<ILogger<DummyPrinter>>());
-                }
-                else
-                {
-                    this.logger.LogError("Unknown printer requested");
-                    return;
-                }
-
-                this.printers.Add(hardwareIdentifier, printer);
+            }
+            else if (hardwareIdentifier.EndsWith("_dummy0"))
+            {
+                printer = new DummyPrinter(this.serviceProvider.GetRequiredService<ILogger<DummyPrinter>>());
             }
             else
             {
-                this.logger.LogInformation($"Printer '{hardwareIdentifier}' is already connected");
+                this.logger.LogError($"Unknown printer '{hardwareIdentifier}'");
+                return;
             }
 
-            var printerMessageForwarder = new PrinterMessageForwarder(this.serviceProvider.GetRequiredService<ILogger<PrinterMessageForwarder>>(), printer);
-            await this.actionCableClient.Subscribe(new PrinterIdentifier(hardwareIdentifier), printerMessageForwarder, CancellationToken.None);
+            ActionCableSubscription subscription = this.actionCableClient.CreateSubscription(new PrinterIdentifier(hardwareIdentifier));
+
+            var printerMessageForwarder = new PrinterMessageForwarder(printer, subscription);
+            this.printerMessageForwarders.Add(hardwareIdentifier, printerMessageForwarder);
+            await printerMessageForwarder.SubscribeAndConnect(CancellationToken.None);
+
+            this.logger.LogInformation($"Printer '{hardwareIdentifier}' set up successfully");
         }
 
         private async Task PollDevices(CancellationToken cancellationToken)
@@ -169,11 +145,9 @@ namespace Print3DCloud.Client
                 await this.subscription.Perform(new DeviceMessage("dummy0", this.config.ClientId + "_dummy0", false), CancellationToken.None).ConfigureAwait(false);
             }
 
-            var portInfos = new List<SerialPortInfo>();
-
             while (this.subscription?.State == SubscriptionState.Subscribed)
             {
-                portInfos.Clear();
+                var portInfos = new List<SerialPortInfo>();
 
                 cancellationToken.ThrowIfCancellationRequested();
 
@@ -198,6 +172,8 @@ namespace Print3DCloud.Client
                     }
                 }
 
+                var devicesToRemove = new List<string>();
+
                 // check for lost devices
                 foreach ((string deviceId, SerialPortInfo portInfo) in this.discoveredSerialDevices)
                 {
@@ -205,11 +181,11 @@ namespace Print3DCloud.Client
 
                     this.logger.LogInformation("Lost device at " + portInfo.PortName);
 
-                    if (this.printers.TryGetValue(deviceId, out IPrinter? printer))
+                    if (this.printerMessageForwarders.TryGetValue(deviceId, out PrinterMessageForwarder? printerMessageForwarder))
                     {
                         try
                         {
-                            printer.Dispose();
+                            printerMessageForwarder.Dispose();
                         }
                         catch (Exception ex)
                         {
@@ -217,10 +193,15 @@ namespace Print3DCloud.Client
                             this.logger.LogError(ex.ToString());
                         }
 
-                        this.printers.Remove(deviceId);
+                        this.printerMessageForwarders.Remove(deviceId);
                     }
 
-                    this.discoveredSerialDevices.Remove(deviceId);
+                    devicesToRemove.Add(deviceId);
+                }
+
+                foreach (string hardwareIdentifier in devicesToRemove)
+                {
+                    this.discoveredSerialDevices.Remove(hardwareIdentifier);
                 }
 
                 await Task.Delay(5000, cancellationToken).ConfigureAwait(false);

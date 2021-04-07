@@ -23,7 +23,6 @@ namespace ActionCableSharp
 
         private readonly ILogger<ActionCableClient> logger;
         private readonly IWebSocketFactory webSocketFactory;
-        private readonly List<ActionCableSubscription> subscriptions;
         private readonly SemaphoreSlim semaphore;
 
         private IWebSocket? webSocket;
@@ -91,9 +90,23 @@ namespace ActionCableSharp
 
             this.logger = logger;
             this.webSocketFactory = webSocketFactory;
-            this.subscriptions = new List<ActionCableSubscription>();
             this.semaphore = new SemaphoreSlim(1);
         }
+
+        /// <summary>
+        /// Event invoked when the client connects successfully to the server.
+        /// </summary>
+        public event Action? Connected;
+
+        /// <summary>
+        /// Event invoked when the client disconnects from the server.
+        /// </summary>
+        public event Action? Disconnected;
+
+        /// <summary>
+        /// Event invoked when a subscription-bound message is received.
+        /// </summary>
+        internal event Action<ActionCableIncomingMessage>? MessageReceived;
 
         /// <summary>
         /// Gets the URI to Action Cable mount path.
@@ -113,7 +126,7 @@ namespace ActionCableSharp
         /// <summary>
         /// Gets the additional headers used when initiating a connection.
         /// </summary>
-        public List<(string, string?)> AdditionalHeaders { get; }
+        public List<(string HeaderName, string? HeaderValue)> AdditionalHeaders { get; }
 
         /// <summary>
         /// Gets the current connection state of the client.
@@ -139,58 +152,35 @@ namespace ActionCableSharp
         /// <returns>A <see cref="Task"/> that completes once the client is disconnected.</returns>
         public async Task DisconnectAsync(CancellationToken cancellationToken)
         {
-            if (this.webSocket?.IsConnected != true)
-            {
-                return;
-            }
+            if (this.State == ClientState.Disconnecting || this.State == ClientState.Disconnected) return;
 
             this.State = ClientState.Disconnecting;
 
-            foreach (var subscription in this.subscriptions)
+            if (this.webSocket != null)
             {
-                subscription.Dispose();
+                await this.webSocket.CloseAsync(WebSocketCloseStatus.NormalClosure, "Closed by client", cancellationToken).ConfigureAwait(false);
             }
 
-            await this.webSocket.CloseAsync(WebSocketCloseStatus.NormalClosure, "Closed by client", cancellationToken).ConfigureAwait(false);
-
             this.State = ClientState.Disconnected;
+            this.Disconnected?.Invoke();
         }
 
         /// <summary>
         /// Subscribes to a specific Action Cable channel.
         /// </summary>
         /// <param name="identifier">Identifier for the channel.</param>
-        /// <param name="receiver">The <see cref="IMessageReceiver"/> that will receive messages.</param>
-        /// <param name="cancellationToken">A <see cref="CancellationToken"/> used to propagate notification that the operation should be canceled.</param>
         /// <returns>A reference to the <see cref="ActionCableSubscription"/> linked to the specified <paramref name="identifier"/>.</returns>
-        public async Task<ActionCableSubscription> Subscribe(Identifier identifier, IMessageReceiver receiver, CancellationToken cancellationToken)
+        public ActionCableSubscription CreateSubscription(Identifier identifier)
         {
-            var subscription = new ActionCableSubscription(this, identifier, receiver);
-            this.subscriptions.Add(subscription);
-
-            try
-            {
-                await this.SendMessageAsync("subscribe", identifier, cancellationToken).ConfigureAwait(false);
-            }
-            catch (WebSocketException ex)
-            {
-                this.logger.LogError(ex.ToString());
-            }
-
-            return subscription;
+            return new ActionCableSubscription(this, identifier);
         }
 
         /// <inheritdoc/>
         public void Dispose()
         {
             this.State = ClientState.Disconnected;
-
-            foreach (var subscription in this.subscriptions)
-            {
-                subscription.Dispose();
-            }
-
             this.webSocket?.Dispose();
+            this.Disconnected?.Invoke();
         }
 
         /// <summary>
@@ -232,18 +222,6 @@ namespace ActionCableSharp
             }
 
             this.semaphore.Release();
-        }
-
-        /// <summary>
-        /// Unsubscribe from a given <see cref="ActionCableSubscription"/>.
-        /// </summary>
-        /// <param name="subscription"><see cref="ActionCableSubscription"/> from which to unsubscribe.</param>
-        /// <param name="cancellationToken">A <see cref="CancellationToken"/> used to propagate notification that the operation should be canceled.</param>
-        /// <returns>A <see cref="Task"/> that completes once the unsubscription request has been sent to the server.</returns>
-        internal async Task Unsubscribe(ActionCableSubscription subscription, CancellationToken cancellationToken)
-        {
-            await this.SendMessageAsync("unsubscribe", subscription.Identifier, cancellationToken).ConfigureAwait(false);
-            this.subscriptions.Remove(subscription);
         }
 
         /// <summary>
@@ -299,11 +277,6 @@ namespace ActionCableSharp
 
         private async Task ReconnectAsync(CancellationToken cancellationToken)
         {
-            foreach (var subscription in this.subscriptions)
-            {
-                subscription.State = SubscriptionState.Pending;
-            }
-
             int reconnectDelayIndex = 0;
 
             while (this.webSocket?.IsConnected != true && !cancellationToken.IsCancellationRequested)
@@ -337,12 +310,6 @@ namespace ActionCableSharp
 
                     // don't await these since they run until the connection is closed/interrupted
                     _ = Task.Run(this.ReceiveLoop).ContinueWith(this.HandleReceiveLoopTaskCompleted);
-
-                    // these run sequentially so might as well await each one individually
-                    foreach (var subscription in this.subscriptions)
-                    {
-                        await this.SendMessageAsync("subscribe", subscription.Identifier, cancellationToken).ConfigureAwait(false);
-                    }
                 }
                 catch (WebSocketException)
                 {
@@ -376,6 +343,7 @@ namespace ActionCableSharp
             {
                 case MessageType.Welcome:
                     this.State = ClientState.Connected;
+                    this.Connected?.Invoke();
                     break;
 
                 case MessageType.Disconnect:
@@ -390,25 +358,13 @@ namespace ActionCableSharp
 
                     this.State = ClientState.Disconnecting;
                     this.shouldReconnectAfterClose = message.Reconnect == true;
+
                     break;
 
                 case MessageType.ConfirmSubscription:
                 case MessageType.RejectSubscription:
                 case MessageType.None:
-                    // create a copy of subscriptions to avoid race condition
-                    foreach (var subscription in this.subscriptions.ToArray())
-                    {
-                        try
-                        {
-                            await subscription.HandleMessage(message).ConfigureAwait(false);
-                        }
-                        catch (Exception ex)
-                        {
-                            this.logger.LogError($"Failed to handle {message.Type} message {message.Message}");
-                            this.logger.LogError(ex.ToString());
-                        }
-                    }
-
+                    this.MessageReceived?.Invoke(message);
                     break;
             }
         }
