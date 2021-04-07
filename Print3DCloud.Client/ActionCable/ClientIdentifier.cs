@@ -6,7 +6,7 @@ namespace Print3DCloud.Client.ActionCable
     /// <summary>
     /// Identifies a 3DCloud client.
     /// </summary>
-    internal class ClientIdentifier : Identifier
+    internal record ClientIdentifier : Identifier
     {
         /// <summary>
         /// Initializes a new instance of the <see cref="ClientIdentifier"/> class.
@@ -29,13 +29,5 @@ namespace Print3DCloud.Client.ActionCable
         /// Gets the secret used to authenticate the client when connecting to the server.
         /// </summary>
         public string? Secret { get; }
-
-        /// <inheritdoc/>
-        public override bool Equals(Identifier? other)
-        {
-            if (other == null || other is not ClientIdentifier clientIdentifier) return false;
-
-            return this.ChannelName == clientIdentifier.ChannelName && this.Id == clientIdentifier.Id && this.Secret == clientIdentifier.Secret;
-        }
     }
 }

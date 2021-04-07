@@ -6,12 +6,12 @@ namespace ActionCableSharp
     /// <summary>
     /// Represents the indentification used when subscribing to a channel.
     /// </summary>
-    public class Identifier : IEquatable<Identifier>
+    public record Identifier
     {
         /// <summary>
         /// Initializes a new instance of the <see cref="Identifier"/> class.
         /// </summary>
-        /// <param name="channelName">Name of the channel.</param>
+        /// <param name="channelName">The name of the channel identified by this instance.</param>
         public Identifier(string channelName)
         {
             this.ChannelName = channelName;
@@ -22,15 +22,5 @@ namespace ActionCableSharp
         /// </summary>
         [JsonPropertyName("channel")]
         public string ChannelName { get; }
-
-        /// <summary>
-        /// Indicates whether this <see cref="Identifier"/> is equal to another <see cref="Identifier"/>.
-        /// </summary>
-        /// <param name="other">The other <see cref="Identifier"/>.</param>
-        /// <returns>Whether both <see cref="Identifier"/> instances are equal or not.</returns>
-        public virtual bool Equals(Identifier? other)
-        {
-            return ReferenceEquals(this, other);
-        }
     }
 }
