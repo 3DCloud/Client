@@ -223,8 +223,11 @@ namespace ActionCableSharp
 
             this.semaphore.Release();
         }
-
-        /// <inheritdoc/>
+        /// <summary>
+        /// Waits for and handles a single message received on the WebSocket.
+        /// </summary>
+        /// <param name="cancellationToken">A <see cref="CancellationToken"/> used to propagate notification that the operation should be canceled.</param>
+        /// <returns>A <see cref="Task"/> that completes once a message has been processed.</returns>
         internal virtual async Task ReceiveMessage(CancellationToken cancellationToken)
         {
             if (this.webSocket?.IsConnected != true)
