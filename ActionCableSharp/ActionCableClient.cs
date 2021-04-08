@@ -262,7 +262,18 @@ namespace ActionCableSharp
 
                 case WebSocketMessageType.Close:
                     this.logger.LogInformation("Connection closed by remote host");
-                    await this.webSocket.CloseOutputAsync(WebSocketCloseStatus.NormalClosure, "Closed by request from server", cancellationToken).ConfigureAwait(false);
+                    this.State = ClientState.Disconnecting;
+
+                    try
+                    {
+                        await this.webSocket.CloseOutputAsync(WebSocketCloseStatus.NormalClosure, "Closed by request from server", cancellationToken).ConfigureAwait(false);
+                    }
+                    finally
+                    {
+                        this.State = ClientState.Disconnected;
+                        this.Disconnected?.Invoke();
+                    }
+
                     break;
 
                 default:
