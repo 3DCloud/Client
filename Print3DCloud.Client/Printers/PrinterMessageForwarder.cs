@@ -1,5 +1,4 @@
 ﻿using System;
-using System.Collections.Generic;
 using System.Threading;
 using System.Threading.Tasks;
 using ActionCableSharp;
@@ -45,6 +44,7 @@ namespace Print3DCloud.Client.Printers
             this.Printer.LogMessage += this.Printer_LogMessage;
             this.Printer.StateChanged += this.Printer_StateChanged;
 
+            await this.Subscription.Unsubscribe(cancellationToken); // TODO temporary until some kind of client-level subscribed state caching is implemented
             await this.Subscription.Subscribe(cancellationToken);
 
             if (!this.Printer.State.IsConnected)

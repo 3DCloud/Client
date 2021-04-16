@@ -114,8 +114,6 @@ namespace ActionCableSharp
         /// <returns>A <see cref="Task"/> that completes once the unsubscription request has been sent to the server.</returns>
         public async Task Unsubscribe(CancellationToken cancellationToken)
         {
-            if (this.State == SubscriptionState.Unsubscribed) return;
-
             if (this.client.State == ClientState.Connected)
             {
                 await this.client.SendMessageAsync("unsubscribe", this.Identifier, cancellationToken).ConfigureAwait(false);
@@ -128,10 +126,18 @@ namespace ActionCableSharp
         /// <inheritdoc/>
         public void Dispose()
         {
+            if (this.client != null)
+            {
+                this.client.Connected -= this.Client_Connected;
+                this.client.Disconnected -= this.Client_Disconnected;
+                this.client.MessageReceived -= this.Client_MessageReceived;
+            }
+
             if (this.State == SubscriptionState.Unsubscribed) return;
 
             this.State = SubscriptionState.Unsubscribed;
             this.Disconnected?.Invoke();
+            this.callbacks.Clear();
         }
 
         private async void Client_Connected()

@@ -89,7 +89,7 @@ namespace Print3DCloud.Client
 
             string hardwareIdentifier = message.Printer.Device.HardwareIdentifier;
 
-            if (this.printerMessageForwarders.ContainsKey(hardwareIdentifier))
+            if (this.printerMessageForwarders.TryGetValue(hardwareIdentifier, out PrinterMessageForwarder? printerMessageForwarder))
             {
                 this.logger.LogInformation($"Printer '{hardwareIdentifier}' is already connected");
                 return;
@@ -126,7 +126,7 @@ namespace Print3DCloud.Client
 
             ActionCableSubscription subscription = this.actionCableClient.CreateSubscription(new PrinterIdentifier(hardwareIdentifier));
 
-            var printerMessageForwarder = new PrinterMessageForwarder(printer, subscription);
+            printerMessageForwarder = new PrinterMessageForwarder(printer, subscription);
             this.printerMessageForwarders.Add(hardwareIdentifier, printerMessageForwarder);
             await printerMessageForwarder.SubscribeAndConnect(CancellationToken.None);
 
