@@ -17,9 +17,16 @@ namespace Print3DCloud.Client.Printers
     /// </summary>
     internal class MarlinPrinter : IPrinter
     {
+        /// <summary>
+        /// Serial printer driver ID as defined by the back-end.
+        /// </summary>
+        public const string DriverId = "marlin";
+
         private const string PrinterAliveLine = "echo:start";
         private const string CommandExpectedResponse = "ok";
         private const string ReportTemperaturesCommand = "M105";
+        private const string SetLineNumberCommandFormat = "M110 N{0}";
+        private const char LineCommentCharacter = ';';
 
         private static readonly Regex CommentRegex = new Regex(@"\(.*?\)|;.*$");
         private static readonly Regex IsTemperatureLineRegex = new Regex(@"T:[\d\.]+ \/[\d\.]+ (?:(?:B|T\d|@\d):[\d\.]+ \/[\d\.]+ ?)+");
@@ -127,7 +134,7 @@ namespace Print3DCloud.Client.Printers
                 line = await this.ReadLineAsync().ConfigureAwait(false);
             }
 
-            await this.WriteLineAsync("M110 N0").ConfigureAwait(false);
+            await this.WriteLineAsync(string.Format(SetLineNumberCommandFormat, 0)).ConfigureAwait(false);
 
             while (line != CommandExpectedResponse)
             {
@@ -222,7 +229,7 @@ namespace Print3DCloud.Client.Printers
             {
                 // we don't allow cancelling since not waiting for acknowledgement can make us enter a broken state
                 await this.commandAcknowledgedResetEvent.WaitOneAsync(CancellationToken.None).ConfigureAwait(false);
-                await this.WriteLineAsync("M110 N0").ConfigureAwait(false);
+                await this.WriteLineAsync(string.Format(SetLineNumberCommandFormat, 0)).ConfigureAwait(false);
 
                 this.currentLineNumber = 1;
             }
@@ -272,10 +279,10 @@ namespace Print3DCloud.Client.Printers
 
                 string? line = await fileReader.ReadLineAsync().ConfigureAwait(false);
 
-                if (line == null) break;
+                if (string.IsNullOrWhiteSpace(line)) break;
 
-                // ignore empty lines and full-line comments
-                if (line.Trim().StartsWith(';'))
+                // ignore full-line comments
+                if (line.TrimStart().StartsWith(LineCommentCharacter))
                 {
                     continue;
                 }

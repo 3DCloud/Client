@@ -19,6 +19,8 @@ namespace Print3DCloud.Client
     /// </summary>
     internal class DeviceManager
     {
+        private const string PrinterConfigurationActionName = "printer_configuration";
+
         private readonly ILogger<DeviceManager> logger;
         private readonly IServiceProvider serviceProvider;
         private readonly ActionCableClient actionCableClient;
@@ -52,7 +54,7 @@ namespace Print3DCloud.Client
             this.subscription.Connected += this.Subscription_Connected;
             this.subscription.Disconnected += this.Subscription_Disconnected;
 
-            this.subscription.RegisterCallback<PrinterConfigurationMessage>("printer_configuration", this.PrinterConfiguration);
+            this.subscription.RegisterCallback<PrinterConfigurationMessage>(PrinterConfigurationActionName, this.PrinterConfiguration);
         }
 
         /// <summary>
@@ -105,7 +107,7 @@ namespace Print3DCloud.Client
 
                 switch (driver)
                 {
-                    case "marlin":
+                    case MarlinPrinter.DriverId:
                         printer = new MarlinPrinter(this.serviceProvider.GetRequiredService<ILogger<MarlinPrinter>>(), portInfo.PortName);
                         break;
 
