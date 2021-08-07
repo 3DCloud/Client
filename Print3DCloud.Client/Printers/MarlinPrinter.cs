@@ -125,7 +125,7 @@ namespace Print3DCloud.Client.Printers
 
             this.serialPort.Open();
 
-            cancellationToken.Register(() => this.Dispose());
+            cancellationToken.Register(this.Dispose);
 
             string? line = null;
 
@@ -339,6 +339,7 @@ namespace Print3DCloud.Client.Printers
             return Task.Run(() => this.serialPort.WriteLine(line));
         }
 
+        // TODO figure out a way to check if printers support automatic temperature reporting https://marlinfw.org/docs/gcode/M155.html
         private async Task TemperaturePolling()
         {
             while (this.IsConnected)

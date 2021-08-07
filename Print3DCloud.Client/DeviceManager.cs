@@ -27,6 +27,7 @@ namespace Print3DCloud.Client
         private readonly Config config;
         private readonly IHostApplicationLifetime hostApplicationLifetime;
 
+        private readonly string dummyPrinterId;
         private readonly ActionCableSubscription subscription;
         private readonly Dictionary<string, SerialPortInfo> discoveredSerialDevices = new();
         private readonly Dictionary<string, PrinterMessageForwarder> printerMessageForwarders = new();
@@ -49,6 +50,7 @@ namespace Print3DCloud.Client
             this.config = config;
             this.hostApplicationLifetime = hostApplicationLifetime;
 
+            this.dummyPrinterId = $"{config.ClientId}_dummy0";
             this.subscription = this.actionCableClient.CreateSubscription(new ClientIdentifier(this.config.ClientId, this.config.Secret));
 
             this.subscription.Connected += this.Subscription_Connected;
@@ -67,12 +69,24 @@ namespace Print3DCloud.Client
             return this.subscription.Subscribe(cancellationToken);
         }
 
-        private void Subscription_Connected()
+        private async void Subscription_Connected()
         {
             this.logger.LogInformation("Subscribed!");
 
-            this.cancellationTokenSource = new CancellationTokenSource();
-            _ = this.PollDevices(this.cancellationTokenSource.Token).ContinueWith(this.HandleTaskCompleted);
+            this.cancellationTokenSource = CancellationTokenSource.CreateLinkedTokenSource(this.hostApplicationLifetime.ApplicationStopping);
+
+            try
+            {
+                await this.PollDevices(this.cancellationTokenSource.Token);
+            }
+            catch (Exception ex)
+            {
+                this.logger.LogError("Device polling task errored; exiting");
+                this.logger.LogError(ex.ToString());
+                this.hostApplicationLifetime.StopApplication();
+            }
+
+            await this.subscription.Unsubscribe(CancellationToken.None);
         }
 
         private void Subscription_Disconnected()
@@ -101,7 +115,11 @@ namespace Print3DCloud.Client
 
             this.logger.LogInformation($"Attempting to set up printer '{hardwareIdentifier}'");
 
-            if (this.discoveredSerialDevices.TryGetValue(hardwareIdentifier, out SerialPortInfo portInfo))
+            if (hardwareIdentifier == this.dummyPrinterId)
+            {
+                printer = new DummyPrinter(this.serviceProvider.GetRequiredService<ILogger<DummyPrinter>>());
+            }
+            else if (this.discoveredSerialDevices.TryGetValue(hardwareIdentifier, out SerialPortInfo portInfo))
             {
                 string driver = message.Printer.PrinterDefinition.Driver;
 
@@ -116,10 +134,6 @@ namespace Print3DCloud.Client
                         return;
                 }
             }
-            else if (hardwareIdentifier.EndsWith("_dummy0"))
-            {
-                printer = new DummyPrinter(this.serviceProvider.GetRequiredService<ILogger<DummyPrinter>>());
-            }
             else
             {
                 this.logger.LogError($"Unknown printer '{hardwareIdentifier}'");
@@ -130,21 +144,35 @@ namespace Print3DCloud.Client
 
             printerMessageForwarder = new PrinterMessageForwarder(printer, subscription);
             this.printerMessageForwarders.Add(hardwareIdentifier, printerMessageForwarder);
-            await printerMessageForwarder.SubscribeAndConnect(CancellationToken.None);
+            await Task.Run(() => printerMessageForwarder.SubscribeAndConnect(CancellationToken.None)).ContinueWith(this.OnPrinterTaskCompleted);
 
             this.logger.LogInformation($"Printer '{hardwareIdentifier}' set up successfully");
+        }
+
+        private void OnPrinterTaskCompleted(Task task)
+        {
+            if (task.IsFaulted)
+            {
+                this.logger.LogError("Printer task errored: " + task.Exception!.Message);
+                this.logger.LogError(task.Exception!.ToString());
+            }
+            else if (task.IsCanceled)
+            {
+                this.logger.LogWarning("Printer task canceled");
+            }
+            else
+            {
+                this.logger.LogTrace("Printer task completed successfully");
+            }
         }
 
         private async Task PollDevices(CancellationToken cancellationToken)
         {
             if (this.subscription?.State != SubscriptionState.Subscribed) return;
 
-            // cancel if requested or if app is shutting down
-            cancellationToken = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken, this.hostApplicationLifetime.ApplicationStopping).Token;
-
             if (Environment.GetCommandLineArgs().Contains("--dummy-printer"))
             {
-                await this.subscription.Perform(new DeviceMessage("dummy0", this.config.ClientId + "_dummy0", false), CancellationToken.None).ConfigureAwait(false);
+                await this.subscription.Perform(new DeviceMessage("dummy0", this.dummyPrinterId, false), CancellationToken.None).ConfigureAwait(false);
             }
 
             while (this.subscription?.State == SubscriptionState.Subscribed)
@@ -210,16 +238,6 @@ namespace Print3DCloud.Client
             }
 
             this.logger.LogInformation("Device polling loop exited");
-        }
-
-        private void HandleTaskCompleted(Task task)
-        {
-            if (task.IsFaulted)
-            {
-                this.logger.LogError("Task errored; exiting");
-                this.logger.LogError(task.Exception!.ToString());
-                this.hostApplicationLifetime.StopApplication();
-            }
         }
     }
 }
