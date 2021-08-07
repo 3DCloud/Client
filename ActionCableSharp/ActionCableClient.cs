@@ -24,6 +24,7 @@ namespace ActionCableSharp
         private readonly ILogger<ActionCableClient> logger;
         private readonly IWebSocketFactory webSocketFactory;
         private readonly SemaphoreSlim semaphore;
+        private readonly Random random;
 
         private IWebSocket? webSocket;
         private CancellationTokenSource? loopCancellationTokenSource;
@@ -91,6 +92,7 @@ namespace ActionCableSharp
             this.logger = logger;
             this.webSocketFactory = webSocketFactory;
             this.semaphore = new SemaphoreSlim(1);
+            this.random = new Random();
         }
 
         /// <summary>
@@ -223,6 +225,7 @@ namespace ActionCableSharp
 
             this.semaphore.Release();
         }
+
         /// <summary>
         /// Waits for and handles a single message received on the WebSocket.
         /// </summary>
@@ -325,7 +328,10 @@ namespace ActionCableSharp
                 {
                     int reconnectDelay = ReconnectDelays[reconnectDelayIndex];
                     this.logger.LogError($"Failed to connect, waiting {reconnectDelay} ms before retrying...");
-                    await Task.Delay(reconnectDelay, cancellationToken).ConfigureAwait(false);
+
+                    // prevent thundering herd problem by introducing random jitter
+                    int actualDelay = this.random.Next((int)(reconnectDelay * 0.8), (int)(reconnectDelay * 1.2));
+                    await Task.Delay(actualDelay, cancellationToken).ConfigureAwait(false);
                     reconnectDelayIndex = Math.Min(reconnectDelayIndex + 1, ReconnectDelays.Length - 1);
                 }
             }
