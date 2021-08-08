@@ -23,9 +23,10 @@ namespace Print3DCloud.Client.Printers
         public const string DriverId = "marlin";
 
         private const string PrinterAliveLine = "echo:start";
-        private const string CommandExpectedResponse = "ok";
+        private const string CommandAcknowledgedMessage = "ok";
         private const string ReportTemperaturesCommand = "M105";
         private const string SetLineNumberCommandFormat = "M110 N{0}";
+        private const string AutomaticTemperatureReportingCommand = "M155 S1";
         private const char LineCommentCharacter = ';';
 
         private static readonly Regex CommentRegex = new Regex(@"\(.*?\)|;.*$");
@@ -136,7 +137,7 @@ namespace Print3DCloud.Client.Printers
 
             await this.WriteLineAsync(string.Format(SetLineNumberCommandFormat, 0)).ConfigureAwait(false);
 
-            while (line != CommandExpectedResponse)
+            while (line != CommandAcknowledgedMessage)
             {
                 line = await this.ReadLineAsync().ConfigureAwait(false);
             }
@@ -145,7 +146,11 @@ namespace Print3DCloud.Client.Printers
 
             this.logger.LogInformation($"Connected");
 
-            this.temperaturePollingTask = Task.Run(this.TemperaturePolling, cancellationToken).ContinueWith(this.HandleTemperaturePollingTaskCompleted, CancellationToken.None);
+            if (!await this.GetPrinterSupportsAutomaticTemperatureReportingAsync(cancellationToken))
+            {
+                this.temperaturePollingTask = Task.Run(this.TemperaturePolling, cancellationToken).ContinueWith(this.HandleTemperaturePollingTaskCompleted, CancellationToken.None);
+            }
+
             this.receiveLoopTask = Task.Run(this.ReceiveLoop, cancellationToken).ContinueWith(this.HandleReceiveLoopTaskCompleted, CancellationToken.None);
         }
 
@@ -215,6 +220,36 @@ namespace Print3DCloud.Client.Printers
         {
             this.serialPort?.Dispose();
             this.serialPort = null;
+        }
+
+        private async Task<bool> GetPrinterSupportsAutomaticTemperatureReportingAsync(CancellationToken cancellationToken)
+        {
+            this.logger.LogTrace("Checking if printer supports automatic temperature reporting");
+
+            await this.WriteLineAsync(AutomaticTemperatureReportingCommand).ConfigureAwait(false);
+            string? line = null;
+            bool result = true;
+
+            while (line != CommandAcknowledgedMessage)
+            {
+                cancellationToken.ThrowIfCancellationRequested();
+
+                line = await this.ReadLineAsync().ConfigureAwait(false);
+
+                if (string.IsNullOrWhiteSpace(line))
+                {
+                    continue;
+                }
+
+                line = line.Trim();
+
+                if (line.StartsWith("echo:Unknown Command:"))
+                {
+                    result = false;
+                }
+            }
+
+            return result;
         }
 
         private async Task SendCommandInternalAsync(string command, CancellationToken cancellationToken)
@@ -339,7 +374,6 @@ namespace Print3DCloud.Client.Printers
             return Task.Run(() => this.serialPort.WriteLine(line));
         }
 
-        // TODO figure out a way to check if printers support automatic temperature reporting https://marlinfw.org/docs/gcode/M155.html
         private async Task TemperaturePolling()
         {
             while (this.IsConnected)
@@ -421,7 +455,7 @@ namespace Print3DCloud.Client.Printers
                 this.resendLine = int.Parse(line[7..].Trim());
                 this.logger.LogWarning("Printer requested resend for line number " + this.resendLine);
             }
-            else if (line.StartsWith(CommandExpectedResponse))
+            else if (line.StartsWith(CommandAcknowledgedMessage))
             {
                 this.commandAcknowledgedResetEvent.Set();
             }
