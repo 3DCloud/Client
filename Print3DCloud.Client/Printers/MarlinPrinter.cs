@@ -3,11 +3,11 @@ using System.Collections.Generic;
 using System.Diagnostics.CodeAnalysis;
 using System.Globalization;
 using System.IO;
-using System.Text;
 using System.Text.RegularExpressions;
 using System.Threading;
 using System.Threading.Tasks;
 using Microsoft.Extensions.Logging;
+using Print3DCloud.Client.Utilities;
 using RJCP.IO.Ports;
 
 namespace Print3DCloud.Client.Printers
@@ -281,7 +281,7 @@ namespace Print3DCloud.Client.Printers
 
             command = CommentRegex.Replace(command, string.Empty).Trim();
             string line = $"N{this.currentLineNumber} {command} N{this.currentLineNumber}";
-            line += "*" + this.GetCommandChecksum(line, this.serialPort.Encoding);
+            line += "*" + MarlinUtilities.GetCommandChecksum(line, this.serialPort.Encoding);
 
             this.resendLine = this.currentLineNumber;
 
@@ -324,26 +324,6 @@ namespace Print3DCloud.Client.Printers
 
                 await this.SendCommandAsync(line, cancellationToken).ConfigureAwait(false);
             }
-        }
-
-        /// <summary>
-        /// Calculates a simple checksum for the given command.
-        /// Based on Marlin's source code: https://github.com/MarlinFirmware/Marlin/blob/8e1ea6a2fa1b90a58b4257eec9fbc2923adda680/Marlin/src/gcode/queue.cpp#L485.
-        /// </summary>
-        /// <param name="command">The command for which to generate a checksum.</param>
-        /// <param name="encoding">The encoding to use when converting the command to a byte array.</param>
-        /// <returns>The command's checksum.</returns>
-        private byte GetCommandChecksum(string command, Encoding encoding)
-        {
-            byte[] bytes = encoding.GetBytes(command);
-            byte checksum = 0;
-
-            foreach (byte b in bytes)
-            {
-                checksum ^= b;
-            }
-
-            return checksum;
         }
 
         private async Task<string?> ReadLineAsync()
