@@ -409,7 +409,7 @@ namespace Print3DCloud.Client.Printers
 
                 if (errorMessage == "Printer halted. kill() called!")
                 {
-                    throw new Exception("Printer halted");
+                    throw new PrinterHaltedException("Printer halted");
                 }
 
                 this.logger.LogError(errorMessage);
