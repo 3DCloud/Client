@@ -26,8 +26,9 @@ namespace Print3DCloud.Client.Printers
         private const string CommandAcknowledgedMessage = "ok";
         private const string ReportTemperaturesCommand = "M105";
         private const string SetLineNumberCommandFormat = "M110 N{0}";
-        private const string AutomaticTemperatureReportingCommand = "M155 S1";
+        private const string AutomaticTemperatureReportingCommand = "M155 S{0}";
         private const char LineCommentCharacter = ';';
+        private const int TemperatureReportingIntervalSeconds = 1;
 
         private static readonly Regex CommentRegex = new(@"\(.*?\)|;.*$");
         private static readonly Regex IsTemperatureLineRegex = new(@"T:[\d\.]+ \/[\d\.]+ (?:(?:B|T\d|@\d):[\d\.]+ \/[\d\.]+ ?)+");
@@ -115,8 +116,6 @@ namespace Print3DCloud.Client.Printers
 
             this.logger.LogInformation($"Connecting to Marlin printer at port '{this.PortName}'...");
 
-            this.globalCancellationTokenSource = new CancellationTokenSource();
-
             this.serialPort = new SerialPortStream(this.PortName, this.BaudRate)
             {
                 RtsEnable = true,
@@ -149,6 +148,8 @@ namespace Print3DCloud.Client.Printers
             this.currentLineNumber = 1;
 
             this.logger.LogInformation($"Connected");
+
+            this.globalCancellationTokenSource = new CancellationTokenSource();
 
             if (!await this.GetPrinterSupportsAutomaticTemperatureReportingAsync(cancellationToken))
             {
@@ -197,11 +198,17 @@ namespace Print3DCloud.Client.Printers
 
             var tasks = new List<Task>(3);
 
-            if (this.printTask != null) tasks.Add(this.printTask.WaitForCompletionAsync());
-            if (this.temperaturePollingTask != null) tasks.Add(this.temperaturePollingTask.WaitForCompletionAsync());
-            if (this.receiveLoopTask != null) tasks.Add(this.receiveLoopTask.WaitForCompletionAsync());
+            if (this.printTask != null) tasks.Add(this.printTask);
+            if (this.temperaturePollingTask != null) tasks.Add(this.temperaturePollingTask);
+            if (this.receiveLoopTask != null) tasks.Add(this.receiveLoopTask);
 
-            await Task.WhenAll(tasks).ConfigureAwait(false);
+            try
+            {
+                await Task.WhenAll(tasks).ConfigureAwait(false);
+            }
+            catch
+            {
+            }
 
             this.logger.LogDebug("Disconnected successfully");
         }
@@ -295,7 +302,7 @@ namespace Print3DCloud.Client.Printers
 
                 if (this.resendLine != this.currentLineNumber)
                 {
-                    throw new InvalidOperationException($"Printer requested line {this.resendLine} but we last sent {this.currentLineNumber}");
+                    throw new InvalidOperationException($"Printer requested resend of line {this.resendLine} but we last sent {this.currentLineNumber}");
                 }
 
                 this.resendLine = 0;
@@ -362,15 +369,15 @@ namespace Print3DCloud.Client.Printers
         {
             while (this.IsConnected)
             {
-                await this.SendCommandAsync(ReportTemperaturesCommand, CancellationToken.None).ConfigureAwait(false);
+                await this.SendCommandAsync(ReportTemperaturesCommand, this.globalCancellationTokenSource.Token).ConfigureAwait(false);
 
                 this.StateChanged?.Invoke(this.State);
 
-                await Task.Delay(1000, this.globalCancellationTokenSource.Token).ConfigureAwait(false);
+                await Task.Delay(TemperatureReportingIntervalSeconds * 1000, this.globalCancellationTokenSource.Token).ConfigureAwait(false);
             }
         }
 
-        private void HandleTemperaturePollingTaskCompleted(Task task)
+        private async Task HandleTemperaturePollingTaskCompleted(Task task)
         {
             if (task.IsCompletedSuccessfully)
             {
@@ -384,6 +391,8 @@ namespace Print3DCloud.Client.Printers
             {
                 this.logger.LogError("Temperature Polling task errored");
                 this.logger.LogError(task.Exception!.ToString());
+
+                await this.DisconnectAsync();
             }
         }
 
@@ -402,7 +411,7 @@ namespace Print3DCloud.Client.Printers
             }
         }
 
-        private void HandleReceiveLoopTaskCompleted(Task task)
+        private async Task HandleReceiveLoopTaskCompleted(Task task)
         {
             if (task.IsCompletedSuccessfully)
             {
@@ -416,6 +425,8 @@ namespace Print3DCloud.Client.Printers
             {
                 this.logger.LogError("Receive Loop task errored");
                 this.logger.LogError(task.Exception!.ToString());
+
+                await this.DisconnectAsync();
             }
         }
 
@@ -438,6 +449,10 @@ namespace Print3DCloud.Client.Printers
             {
                 this.resendLine = int.Parse(line[7..].Trim());
                 this.logger.LogWarning("Printer requested resend for line number " + this.resendLine);
+            }
+            else if (line.StartsWith(PrinterAliveLine))
+            {
+                throw new Exception("Printer restarted unexpectedly");
             }
             else if (line.StartsWith(CommandAcknowledgedMessage))
             {
