@@ -71,7 +71,7 @@ namespace Print3DCloud.Client.Printers
         }
 
         /// <inheritdoc/>
-        public Task StartPrintAsync(Stream fileStream, CancellationToken cancellationToken)
+        public Task PrintAsync(Stream fileStream, CancellationToken cancellationToken)
         {
             this.logger.LogInformation("Printing");
             this.LogMessage?.Invoke("Printing");

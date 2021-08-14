@@ -214,7 +214,7 @@ namespace Print3DCloud.Client.Printers
         }
 
         /// <inheritdoc/>
-        public Task StartPrintAsync(Stream fileStream, CancellationToken cancellationToken)
+        public Task PrintAsync(Stream fileStream, CancellationToken cancellationToken)
         {
             if (this.IsPrinting)
             {

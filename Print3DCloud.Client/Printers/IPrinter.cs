@@ -45,7 +45,7 @@ namespace Print3DCloud.Client.Printers
         /// <param name="fileStream">The <see cref="Stream"/> containing the file.</param>
         /// <param name="cancellationToken">A <see cref="CancellationToken"/> used to propagate notification that the operation should be canceled.</param>
         /// <returns>A <see cref="Task"/> that completes once the print has been started.</returns>
-        Task StartPrintAsync(Stream fileStream, CancellationToken cancellationToken);
+        Task PrintAsync(Stream fileStream, CancellationToken cancellationToken);
 
         /// <summary>
         /// Sends a command to the printer.
