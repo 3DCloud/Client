@@ -98,12 +98,12 @@ namespace ActionCableSharp
         /// <summary>
         /// Event invoked when the client connects successfully to the server.
         /// </summary>
-        public virtual event Action? Connected;
+        public event Action? Connected;
 
         /// <summary>
         /// Event invoked when the client disconnects from the server.
         /// </summary>
-        public virtual event Action? Disconnected;
+        public event Action? Disconnected;
 
         /// <summary>
         /// Event invoked when a subscription-bound message is received.
@@ -322,7 +322,7 @@ namespace ActionCableSharp
                     this.shouldReconnectAfterClose = false;
 
                     // don't await these since they run until the connection is closed/interrupted
-                    _ = Task.Run(this.ReceiveLoop).ContinueWith(this.HandleReceiveLoopTaskCompleted);
+                    _ = Task.Run(this.ReceiveLoop, cancellationToken).ContinueWith(this.HandleReceiveLoopTaskCompleted);
                 }
                 catch (WebSocketException)
                 {

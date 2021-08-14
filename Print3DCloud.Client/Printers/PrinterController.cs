@@ -9,14 +9,14 @@ namespace Print3DCloud.Client.Printers
     /// <summary>
     /// Interface between an <see cref="IPrinter"/> instance and an <see cref="ActionCableSubscription"/> instance.
     /// </summary>
-    internal class PrinterMessageForwarder : IDisposable
+    internal class PrinterController : IDisposable
     {
         /// <summary>
-        /// Initializes a new instance of the <see cref="PrinterMessageForwarder"/> class.
+        /// Initializes a new instance of the <see cref="PrinterController"/> class.
         /// </summary>
         /// <param name="printer">The <see cref="IPrinter"/> to use.</param>
         /// <param name="subscription/">The <see cref="ActionCableSubscription"/> to use.</param>
-        public PrinterMessageForwarder(IPrinter printer, ActionCableSubscription subscription)
+        public PrinterController(IPrinter printer, ActionCableSubscription subscription)
         {
             this.Printer = printer;
             this.Subscription = subscription;
@@ -47,10 +47,7 @@ namespace Print3DCloud.Client.Printers
             await this.Subscription.Unsubscribe(cancellationToken); // TODO temporary until some kind of client-level subscribed state caching is implemented
             await this.Subscription.Subscribe(cancellationToken);
 
-            if (!this.Printer.State.IsConnected)
-            {
-                await this.Printer.ConnectAsync(cancellationToken).ConfigureAwait(false);
-            }
+            await this.Printer.ConnectAsync(cancellationToken).ConfigureAwait(false);
         }
 
         /// <inheritdoc/>

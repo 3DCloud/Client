@@ -16,7 +16,7 @@ namespace Print3DCloud.Client.Configuration
         /// <summary>
         /// Gets the <see cref="JsonSerializerOptions"/> used when loading and saving the configuration.
         /// </summary>
-        public static JsonSerializerOptions Options => new JsonSerializerOptions
+        public static JsonSerializerOptions Options => new()
         {
             WriteIndented = true,
             IgnoreReadOnlyProperties = false,
@@ -55,10 +55,8 @@ namespace Print3DCloud.Client.Configuration
 
             if (File.Exists(FilePath))
             {
-                await using (FileStream fileStream = File.OpenRead(FilePath))
-                {
-                    config = await JsonSerializer.DeserializeAsync<Config>(fileStream, Options, cancellationToken).ConfigureAwait(false);
-                }
+                await using FileStream fileStream = File.OpenRead(FilePath);
+                config = await JsonSerializer.DeserializeAsync<Config>(fileStream, Options, cancellationToken).ConfigureAwait(false);
             }
 
             if (config == null)
@@ -76,10 +74,8 @@ namespace Print3DCloud.Client.Configuration
         /// <returns>A <see cref="Task"/> that completes once the file has been saved.</returns>
         public async Task SaveAsync(CancellationToken cancellationToken)
         {
-            await using (FileStream fileStream = File.OpenWrite(FilePath))
-            {
-                await JsonSerializer.SerializeAsync(fileStream, this, Options, cancellationToken).ConfigureAwait(false);
-            }
+            await using FileStream fileStream = File.OpenWrite(FilePath);
+            await JsonSerializer.SerializeAsync(fileStream, this, Options, cancellationToken).ConfigureAwait(false);
         }
 
         private static string GenerateRandomBase64String()

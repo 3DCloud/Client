@@ -20,6 +20,7 @@ namespace Print3DCloud.Client
     internal class DeviceManager
     {
         private const string PrinterConfigurationActionName = "printer_configuration";
+        private const int ScanDevicesIntervalMs = 5_000;
 
         private readonly ILogger<DeviceManager> logger;
         private readonly IServiceProvider serviceProvider;
@@ -30,7 +31,7 @@ namespace Print3DCloud.Client
         private readonly string dummyPrinterId;
         private readonly ActionCableSubscription subscription;
         private readonly Dictionary<string, SerialPortInfo> discoveredSerialDevices = new();
-        private readonly Dictionary<string, PrinterMessageForwarder> printerMessageForwarders = new();
+        private readonly Dictionary<string, PrinterController> printers = new();
 
         private CancellationTokenSource? cancellationTokenSource;
 
@@ -50,13 +51,13 @@ namespace Print3DCloud.Client
             this.config = config;
             this.hostApplicationLifetime = hostApplicationLifetime;
 
-            this.dummyPrinterId = $"{config.ClientId}_dummy0";
+            this.dummyPrinterId = $"{config.ClientId}_dummy";
             this.subscription = this.actionCableClient.CreateSubscription(new ClientIdentifier(this.config.ClientId, this.config.Secret));
 
             this.subscription.Connected += this.Subscription_Connected;
             this.subscription.Disconnected += this.Subscription_Disconnected;
 
-            this.subscription.RegisterCallback<PrinterConfigurationMessage>(PrinterConfigurationActionName, this.PrinterConfiguration);
+            this.subscription.RegisterCallback<PrinterConfigurationMessage>(PrinterConfigurationActionName, this.HandlePrinterConfigurationMessage);
         }
 
         /// <summary>
@@ -99,13 +100,13 @@ namespace Print3DCloud.Client
         /// Message indicating a device has been configured as a printer.
         /// </summary>
         /// <param name="message">The received message.</param>
-        private async void PrinterConfiguration(PrinterConfigurationMessage message)
+        private async void HandlePrinterConfigurationMessage(PrinterConfigurationMessage message)
         {
             if (message.Printer.PrinterDefinition == null || message.Printer.Device == null) return;
 
             string hardwareIdentifier = message.Printer.Device.HardwareIdentifier;
 
-            if (this.printerMessageForwarders.TryGetValue(hardwareIdentifier, out PrinterMessageForwarder? printerMessageForwarder))
+            if (this.printers.TryGetValue(hardwareIdentifier, out PrinterController? printerManager))
             {
                 this.logger.LogInformation($"Printer '{hardwareIdentifier}' is already connected");
                 return;
@@ -142,27 +143,19 @@ namespace Print3DCloud.Client
 
             ActionCableSubscription subscription = this.actionCableClient.CreateSubscription(new PrinterIdentifier(hardwareIdentifier));
 
-            printerMessageForwarder = new PrinterMessageForwarder(printer, subscription);
-            this.printerMessageForwarders.Add(hardwareIdentifier, printerMessageForwarder);
-            await Task.Run(() => printerMessageForwarder.SubscribeAndConnect(CancellationToken.None)).ContinueWith(this.OnPrinterTaskCompleted);
+            printerManager = new PrinterController(printer, subscription);
+            this.printers.Add(hardwareIdentifier, printerManager);
 
-            this.logger.LogInformation($"Printer '{hardwareIdentifier}' set up successfully");
-        }
+            try
+            {
+                await Task.Run(() => printerManager.SubscribeAndConnect(CancellationToken.None));
 
-        private void OnPrinterTaskCompleted(Task task)
-        {
-            if (task.IsFaulted)
-            {
-                this.logger.LogError("Printer task errored: " + task.Exception!.Message);
-                this.logger.LogError(task.Exception!.ToString());
+                this.logger.LogInformation($"Printer '{hardwareIdentifier}' set up successfully");
             }
-            else if (task.IsCanceled)
+            catch (Exception ex)
             {
-                this.logger.LogWarning("Printer task canceled");
-            }
-            else
-            {
-                this.logger.LogTrace("Printer task completed successfully");
+                this.logger.LogError($"Failed to set up printer '{hardwareIdentifier}': {ex.Message}");
+                this.logger.LogError(ex.StackTrace);
             }
         }
 
@@ -211,7 +204,7 @@ namespace Print3DCloud.Client
 
                     this.logger.LogInformation("Lost device at " + portInfo.PortName);
 
-                    if (this.printerMessageForwarders.TryGetValue(deviceId, out PrinterMessageForwarder? printerMessageForwarder))
+                    if (this.printers.TryGetValue(deviceId, out PrinterController? printerMessageForwarder))
                     {
                         try
                         {
@@ -223,7 +216,7 @@ namespace Print3DCloud.Client
                             this.logger.LogError(ex.ToString());
                         }
 
-                        this.printerMessageForwarders.Remove(deviceId);
+                        this.printers.Remove(deviceId);
                     }
 
                     devicesToRemove.Add(deviceId);
@@ -234,7 +227,7 @@ namespace Print3DCloud.Client
                     this.discoveredSerialDevices.Remove(hardwareIdentifier);
                 }
 
-                await Task.Delay(5000, cancellationToken).ConfigureAwait(false);
+                await Task.Delay(ScanDevicesIntervalMs, cancellationToken).ConfigureAwait(false);
             }
 
             this.logger.LogInformation("Device polling loop exited");

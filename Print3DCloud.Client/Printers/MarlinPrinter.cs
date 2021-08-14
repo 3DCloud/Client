@@ -29,13 +29,15 @@ namespace Print3DCloud.Client.Printers
         private const string AutomaticTemperatureReportingCommand = "M155 S1";
         private const char LineCommentCharacter = ';';
 
-        private static readonly Regex CommentRegex = new Regex(@"\(.*?\)|;.*$");
-        private static readonly Regex IsTemperatureLineRegex = new Regex(@"T:[\d\.]+ \/[\d\.]+ (?:(?:B|T\d|@\d):[\d\.]+ \/[\d\.]+ ?)+");
-        private static readonly Regex TemperaturesRegex = new Regex(@"(?<sensor>B|T\d?):(?<current>[\d\.]+) \/(?<target>[\d\.]+)");
+        private static readonly Regex CommentRegex = new(@"\(.*?\)|;.*$");
+        private static readonly Regex IsTemperatureLineRegex = new(@"T:[\d\.]+ \/[\d\.]+ (?:(?:B|T\d|@\d):[\d\.]+ \/[\d\.]+ ?)+");
+        private static readonly Regex TemperaturesRegex = new(@"(?<sensor>B|T\d?):(?<current>[\d\.]+) \/(?<target>[\d\.]+)");
 
         private readonly ILogger<MarlinPrinter> logger;
-        private readonly AutoResetEvent sendCommandResetEvent;
-        private readonly AutoResetEvent commandAcknowledgedResetEvent;
+        private readonly AutoResetEvent sendCommandResetEvent = new(true);
+        private readonly AutoResetEvent commandAcknowledgedResetEvent = new(true);
+
+        private readonly List<TemperatureSensor> hotendTemperatures = new();
 
         private CancellationTokenSource globalCancellationTokenSource;
         private SerialPortStream? serialPort;
@@ -47,8 +49,7 @@ namespace Print3DCloud.Client.Printers
         private long currentLineNumber;
         private long resendLine;
 
-        private TemperatureSensor activeHotendTemperature;
-        private List<TemperatureSensor> hotendTemperatures;
+        private TemperatureSensor activeHotendTemperature = new(string.Empty, 0, 0);
         private TemperatureSensor? bedTemperature;
 
         /// <summary>
@@ -65,8 +66,6 @@ namespace Print3DCloud.Client.Printers
             this.logger = logger;
             this.sendCommandResetEvent = new AutoResetEvent(true);
             this.commandAcknowledgedResetEvent = new AutoResetEvent(true);
-            this.activeHotendTemperature = new TemperatureSensor(string.Empty, 0, 0);
-            this.hotendTemperatures = new List<TemperatureSensor>();
             this.globalCancellationTokenSource = new CancellationTokenSource();
         }
 
@@ -87,7 +86,7 @@ namespace Print3DCloud.Client.Printers
         public int BaudRate { get; }
 
         /// <inheritdoc/>
-        public PrinterState State => new PrinterState(
+        public PrinterState State => new(
             this.IsConnected,
             this.IsPrinting,
             this.activeHotendTemperature,
@@ -109,6 +108,11 @@ namespace Print3DCloud.Client.Printers
         /// <inheritdoc/>
         public async Task ConnectAsync(CancellationToken cancellationToken)
         {
+            if (this.State.IsConnected)
+            {
+                throw new InvalidOperationException("Already connected");
+            }
+
             this.logger.LogInformation($"Connecting to Marlin printer at port '{this.PortName}'...");
 
             this.globalCancellationTokenSource = new CancellationTokenSource();
