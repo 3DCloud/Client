@@ -1,6 +1,7 @@
 ﻿using System;
 using System.Buffers;
 using System.Collections.Generic;
+using System.Reflection;
 using System.Text.Json;
 using System.Threading;
 using System.Threading.Tasks;
@@ -89,6 +90,21 @@ namespace ActionCableSharp
             }
 
             this.State = SubscriptionState.Pending;
+        }
+
+        /// <summary>
+        /// Registers a callback when a message with an "action" field with the value <paramref name="actionName"/> is received.
+        /// </summary>
+        /// <param name="actionName">Name of the action.</param>
+        /// <param name="callback">Callback to call.</param>
+        public void RegisterCallback(string actionName, Action callback)
+        {
+            if (!this.callbacks.ContainsKey(actionName))
+            {
+                this.callbacks.Add(actionName, new List<Delegate>());
+            }
+
+            this.callbacks[actionName].Add(callback);
         }
 
         /// <summary>
@@ -189,8 +205,17 @@ namespace ActionCableSharp
 
             foreach (Delegate del in delegates)
             {
-                Type deserializeToType = del.Method.GetParameters()[0].ParameterType;
-                del.Method.Invoke(del.Target, new object?[] { this.ConvertToObject(message, deserializeToType) });
+                ParameterInfo[] parameterTypes = del.Method.GetParameters();
+
+                if (parameterTypes.Length == 1)
+                {
+                    Type deserializeToType = del.Method.GetParameters()[0].ParameterType;
+                    del.Method.Invoke(del.Target, new object?[] { this.ConvertToObject(message, deserializeToType) });
+                }
+                else
+                {
+                    del.Method.Invoke(del.Target, Array.Empty<object>());
+                }
             }
         }
 

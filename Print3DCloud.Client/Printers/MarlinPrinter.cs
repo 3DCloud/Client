@@ -237,7 +237,7 @@ namespace Print3DCloud.Client.Printers
         {
             this.logger.LogTrace("Checking if printer supports automatic temperature reporting");
 
-            await this.WriteLineAsync(AutomaticTemperatureReportingCommand).ConfigureAwait(false);
+            await this.WriteLineAsync(string.Format(AutomaticTemperatureReportingCommand, TemperatureReportingIntervalSeconds)).ConfigureAwait(false);
             string? line = null;
             bool result = true;
 

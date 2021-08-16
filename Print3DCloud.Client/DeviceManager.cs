@@ -143,7 +143,7 @@ namespace Print3DCloud.Client
 
             ActionCableSubscription subscription = this.actionCableClient.CreateSubscription(new PrinterIdentifier(hardwareIdentifier));
 
-            printerManager = new PrinterController(printer, subscription);
+            printerManager = new PrinterController(this.serviceProvider.GetRequiredService<ILogger<PrinterController>>(), printer, subscription);
             this.printers.Add(hardwareIdentifier, printerManager);
 
             try
