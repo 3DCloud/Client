@@ -20,7 +20,7 @@ namespace Print3DCloud.Client
     internal class DeviceManager
     {
         private const string PrinterConfigurationActionName = "printer_configuration";
-        private const int ScanDevicesIntervalMs = 5_000;
+        private const int ScanDevicesIntervalMs = 1_000;
 
         private readonly ILogger<DeviceManager> logger;
         private readonly IServiceProvider serviceProvider;
@@ -143,7 +143,7 @@ namespace Print3DCloud.Client
 
             ActionCableSubscription subscription = this.actionCableClient.CreateSubscription(new PrinterIdentifier(hardwareIdentifier));
 
-            printerManager = new PrinterController(this.serviceProvider.GetRequiredService<ILogger<PrinterController>>(), printer, subscription);
+            printerManager = new PrinterController(printer, subscription);
             this.printers.Add(hardwareIdentifier, printerManager);
 
             try
@@ -170,67 +170,81 @@ namespace Print3DCloud.Client
 
             while (this.subscription?.State == SubscriptionState.Subscribed)
             {
-                var portInfos = new List<SerialPortInfo>();
-
                 cancellationToken.ThrowIfCancellationRequested();
 
-                // check for new devices
-                foreach (SerialPortInfo portInfo in SerialPortHelper.GetPorts())
-                {
-                    portInfos.Add(portInfo);
-
-                    if (this.discoveredSerialDevices.ContainsKey(portInfo.UniqueId)) continue;
-
-                    this.logger.LogInformation("Found new device at " + portInfo.PortName);
-
-                    try
-                    {
-                        await this.subscription.Perform(new DeviceMessage(portInfo.PortName, portInfo.UniqueId, portInfo.IsPortableUniqueId), cancellationToken).ConfigureAwait(false);
-                        this.discoveredSerialDevices.Add(portInfo.UniqueId, portInfo);
-                    }
-                    catch (Exception ex)
-                    {
-                        this.logger.LogError("Could not send device discovery message");
-                        this.logger.LogError(ex.ToString());
-                    }
-                }
-
-                var devicesToRemove = new List<string>();
-
-                // check for lost devices
-                foreach ((string deviceId, SerialPortInfo portInfo) in this.discoveredSerialDevices)
-                {
-                    if (portInfos.Contains(portInfo)) continue;
-
-                    this.logger.LogInformation("Lost device at " + portInfo.PortName);
-
-                    if (this.printers.TryGetValue(deviceId, out PrinterController? printerMessageForwarder))
-                    {
-                        try
-                        {
-                            printerMessageForwarder.Dispose();
-                        }
-                        catch (Exception ex)
-                        {
-                            this.logger.LogError("Could not disconnect printer");
-                            this.logger.LogError(ex.ToString());
-                        }
-
-                        this.printers.Remove(deviceId);
-                    }
-
-                    devicesToRemove.Add(deviceId);
-                }
-
-                foreach (string hardwareIdentifier in devicesToRemove)
-                {
-                    this.discoveredSerialDevices.Remove(hardwareIdentifier);
-                }
+                await this.ScanDevices(cancellationToken);
+                await this.ReportPrinterStates(cancellationToken);
 
                 await Task.Delay(ScanDevicesIntervalMs, cancellationToken).ConfigureAwait(false);
             }
 
             this.logger.LogInformation("Device polling loop exited");
+        }
+
+        private async Task ScanDevices(CancellationToken cancellationToken)
+        {
+            var portInfos = new List<SerialPortInfo>();
+
+            // check for new devices
+            foreach (SerialPortInfo portInfo in SerialPortHelper.GetPorts())
+            {
+                portInfos.Add(portInfo);
+
+                if (this.discoveredSerialDevices.ContainsKey(portInfo.UniqueId)) continue;
+
+                this.logger.LogInformation("Found new device at " + portInfo.PortName);
+
+                try
+                {
+                    await this.subscription.Perform(new DeviceMessage(portInfo.PortName, portInfo.UniqueId, portInfo.IsPortableUniqueId), cancellationToken).ConfigureAwait(false);
+                    this.discoveredSerialDevices.Add(portInfo.UniqueId, portInfo);
+                }
+                catch (Exception ex)
+                {
+                    this.logger.LogError("Could not send device discovery message");
+                    this.logger.LogError(ex.ToString());
+                }
+            }
+
+            var devicesToRemove = new List<string>();
+
+            // check for lost devices
+            foreach ((string deviceId, SerialPortInfo portInfo) in this.discoveredSerialDevices)
+            {
+                if (portInfos.Contains(portInfo)) continue;
+
+                this.logger.LogInformation("Lost device at " + portInfo.PortName);
+
+                if (this.printers.TryGetValue(deviceId, out PrinterController? printerMessageForwarder))
+                {
+                    try
+                    {
+                        printerMessageForwarder.Dispose();
+                    }
+                    catch (Exception ex)
+                    {
+                        this.logger.LogError("Could not disconnect printer");
+                        this.logger.LogError(ex.ToString());
+                    }
+
+                    this.printers.Remove(deviceId);
+                }
+
+                devicesToRemove.Add(deviceId);
+            }
+
+            foreach (string hardwareIdentifier in devicesToRemove)
+            {
+                this.discoveredSerialDevices.Remove(hardwareIdentifier);
+            }
+        }
+
+        private Task ReportPrinterStates(CancellationToken cancellationToken)
+        {
+            return this.subscription.Perform(
+                new PrinterStatesMessage(
+                    this.printers.ToDictionary(kvp => kvp.Key, kvp => new PrinterStateWithTemperatures(kvp.Value.Printer.State, kvp.Value.Printer.Temperatures))),
+                cancellationToken);
         }
     }
 }

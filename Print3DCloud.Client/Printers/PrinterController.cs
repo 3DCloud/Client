@@ -12,18 +12,13 @@ namespace Print3DCloud.Client.Printers
     /// </summary>
     internal class PrinterController : IDisposable
     {
-        private readonly ILogger<PrinterController> logger;
-
         /// <summary>
         /// Initializes a new instance of the <see cref="PrinterController"/> class.
         /// </summary>
-        /// <param name="logger">The <see cref="ILogger{TCategoryName}"/> to use.</param>
         /// <param name="printer">The <see cref="IPrinter"/> to use.</param>
         /// <param name="subscription/">The <see cref="ActionCableSubscription"/> to use.</param>
-        public PrinterController(ILogger<PrinterController> logger, IPrinter printer, ActionCableSubscription subscription)
+        public PrinterController(IPrinter printer, ActionCableSubscription subscription)
         {
-            this.logger = logger;
-
             this.Printer = printer;
             this.Subscription = subscription;
 
@@ -49,7 +44,6 @@ namespace Print3DCloud.Client.Printers
         public async Task SubscribeAndConnect(CancellationToken cancellationToken)
         {
             this.Printer.LogMessage += this.Printer_LogMessage;
-            this.Printer.StateChanged += this.Printer_StateChanged;
 
             await this.Subscription.Unsubscribe(cancellationToken); // TODO temporary until some kind of client-level subscribed state caching is implemented
             await this.Subscription.Subscribe(cancellationToken);
@@ -61,7 +55,6 @@ namespace Print3DCloud.Client.Printers
         public void Dispose()
         {
             this.Printer.LogMessage -= this.Printer_LogMessage;
-            this.Printer.StateChanged -= this.Printer_StateChanged;
 
             this.Printer.Dispose();
             this.Subscription.Dispose();
@@ -74,13 +67,6 @@ namespace Print3DCloud.Client.Printers
             this.Subscription.Perform(new PrinterMessage(message), CancellationToken.None);
         }
 
-        private void Printer_StateChanged(PrinterState state)
-        {
-            if (this.Subscription.State != SubscriptionState.Subscribed) return;
-
-            this.Subscription.Perform(new PrinterStateMessage(state), CancellationToken.None);
-        }
-
         private async void SendCommand(SendCommandMessage message)
         {
             if (string.IsNullOrWhiteSpace(message.Command)) return;
@@ -90,7 +76,7 @@ namespace Print3DCloud.Client.Printers
 
         private async void ReconnectPrinter()
         {
-            if (this.Printer.State.IsConnected)
+            if (this.Printer.State != PrinterState.Disconnected)
             {
                 await this.Printer.DisconnectAsync();
             }

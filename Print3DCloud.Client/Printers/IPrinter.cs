@@ -11,11 +11,6 @@ namespace Print3DCloud.Client.Printers
     internal interface IPrinter : IDisposable
     {
         /// <summary>
-        /// Triggered when the printer's state changes.
-        /// </summary>
-        public event Action<PrinterState>? StateChanged;
-
-        /// <summary>
         /// Triggered when a message produced by the printer should be logged.
         /// </summary>
         public event Action<string>? LogMessage;
@@ -25,6 +20,11 @@ namespace Print3DCloud.Client.Printers
         /// </summary>
         /// <returns>The state of the printer.</returns>
         public PrinterState State { get; }
+
+        /// <summary>
+        /// Gets the <see cref="PrinterTemperatures"/> containing the latest temperatures reported by the printer.
+        /// </summary>
+        public PrinterTemperatures? Temperatures { get; }
 
         /// <summary>
         /// Connects to the printer.
@@ -45,7 +45,28 @@ namespace Print3DCloud.Client.Printers
         /// <param name="fileStream">The <see cref="Stream"/> containing the file.</param>
         /// <param name="cancellationToken">A <see cref="CancellationToken"/> used to propagate notification that the operation should be canceled.</param>
         /// <returns>A <see cref="Task"/> that completes once the print has been started.</returns>
-        Task PrintAsync(Stream fileStream, CancellationToken cancellationToken);
+        Task StartPrintAsync(Stream fileStream, CancellationToken cancellationToken);
+
+        /// <summary>
+        /// Pauses the print that is currently running.
+        /// </summary>
+        /// <param name="cancellationToken">A <see cref="CancellationToken"/> used to propagate notification that the operation should be canceled.</param>
+        /// <returns>A <see cref="Task"/> that completes once the print has been paused.</returns>
+        Task PausePrintAsync(CancellationToken cancellationToken);
+
+        /// <summary>
+        /// Resumes the print that is currently paused.
+        /// </summary>
+        /// <param name="cancellationToken">A <see cref="CancellationToken"/> used to propagate notification that the operation should be canceled.</param>
+        /// <returns>A <see cref="Task"/> that completes once the print has been resumed.</returns>
+        Task ResumePrintAsync(CancellationToken cancellationToken);
+
+        /// <summary>
+        /// Aborts the print that is currently running.
+        /// </summary>
+        /// <param name="cancellationToken">A <see cref="CancellationToken"/> used to propagate notification that the operation should be canceled.</param>
+        /// <returns>A <see cref="Task"/> that completes once the print has been aborted.</returns>
+        Task AbortPrintAsync(CancellationToken cancellationToken);
 
         /// <summary>
         /// Sends a command to the printer.

@@ -1,6 +1,5 @@
 ﻿using System;
 using System.Collections.Generic;
-using System.Diagnostics.CodeAnalysis;
 using System.Globalization;
 using System.IO;
 using System.Text.RegularExpressions;
@@ -38,8 +37,6 @@ namespace Print3DCloud.Client.Printers
         private readonly AutoResetEvent sendCommandResetEvent = new(true);
         private readonly AutoResetEvent commandAcknowledgedResetEvent = new(true);
 
-        private readonly List<TemperatureSensor> hotendTemperatures = new();
-
         private CancellationTokenSource globalCancellationTokenSource;
         private SerialPortStream? serialPort;
 
@@ -49,9 +46,6 @@ namespace Print3DCloud.Client.Printers
 
         private long currentLineNumber;
         private long resendLine;
-
-        private TemperatureSensor activeHotendTemperature = new(string.Empty, 0, 0);
-        private TemperatureSensor? bedTemperature;
 
         /// <summary>
         /// Initializes a new instance of the <see cref="MarlinPrinter"/> class.
@@ -71,9 +65,6 @@ namespace Print3DCloud.Client.Printers
         }
 
         /// <inheritdoc/>
-        public event Action<PrinterState>? StateChanged;
-
-        /// <inheritdoc/>
         public event Action<string>? LogMessage;
 
         /// <summary>
@@ -87,32 +78,20 @@ namespace Print3DCloud.Client.Printers
         public int BaudRate { get; }
 
         /// <inheritdoc/>
-        public PrinterState State => new(
-            this.IsConnected,
-            this.IsPrinting,
-            this.activeHotendTemperature,
-            this.hotendTemperatures,
-            this.bedTemperature);
+        public PrinterState State { get; private set; } = PrinterState.Disconnected;
 
-        /// <summary>
-        /// Gets a value indicating whether or not this printer is currently connected.
-        /// </summary>
-        [MemberNotNullWhen(true, nameof(serialPort))]
-        public bool IsConnected => this.serialPort != null && this.serialPort.IsOpen;
-
-        /// <summary>
-        /// Gets a value indicating whether or not this printer is currently printing.
-        /// </summary>
-        [MemberNotNullWhen(true, nameof(printTask))]
-        public bool IsPrinting => this.printTask != null && !this.printTask.IsCompleted;
+        /// <inheritdoc/>
+        public PrinterTemperatures? Temperatures { get; private set; }
 
         /// <inheritdoc/>
         public async Task ConnectAsync(CancellationToken cancellationToken)
         {
-            if (this.State.IsConnected)
+            if (this.State != PrinterState.Disconnected)
             {
-                throw new InvalidOperationException("Already connected");
+                throw new InvalidOperationException("Printer is already connected");
             }
+
+            this.State = PrinterState.Connecting;
 
             this.logger.LogInformation($"Connecting to Marlin printer at port '{this.PortName}'...");
 
@@ -157,6 +136,8 @@ namespace Print3DCloud.Client.Printers
             }
 
             this.receiveLoopTask = Task.Run(this.ReceiveLoop, cancellationToken).ContinueWith(this.HandleReceiveLoopTaskCompleted, CancellationToken.None);
+
+            this.State = PrinterState.Ready;
         }
 
         /// <inheritdoc/>
@@ -190,8 +171,6 @@ namespace Print3DCloud.Client.Printers
         /// <inheritdoc/>
         public async Task DisconnectAsync()
         {
-            this.Dispose();
-
             this.logger.LogDebug("Waiting for all tasks to complete...");
 
             this.globalCancellationTokenSource.Cancel();
@@ -210,20 +189,59 @@ namespace Print3DCloud.Client.Printers
             {
             }
 
+            this.Dispose();
+
             this.logger.LogDebug("Disconnected successfully");
         }
 
         /// <inheritdoc/>
-        public Task PrintAsync(Stream fileStream, CancellationToken cancellationToken)
+        public Task StartPrintAsync(Stream fileStream, CancellationToken cancellationToken)
         {
-            if (this.IsPrinting)
+            if (this.State != PrinterState.Ready)
             {
-                throw new InvalidOperationException("Already printing something");
+                throw new InvalidOperationException("Printer isn't ready");
             }
+
+            this.State = PrinterState.Printing;
 
             CancellationTokenSource printCancellationTokenSource = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken, this.globalCancellationTokenSource.Token);
 
-            return this.printTask = this.StartPrintInternalAsync(fileStream, printCancellationTokenSource.Token);
+            this.printTask = this.PrintFileAsync(fileStream, printCancellationTokenSource.Token);
+
+            return Task.CompletedTask;
+        }
+
+        /// <inheritdoc/>
+        public Task PausePrintAsync(CancellationToken cancellationToken)
+        {
+            if (this.State != PrinterState.Printing)
+            {
+                throw new InvalidOperationException("Not printing");
+            }
+
+            throw new NotImplementedException();
+        }
+
+        /// <inheritdoc/>
+        public Task ResumePrintAsync(CancellationToken cancellationToken)
+        {
+            if (this.State != PrinterState.Paused)
+            {
+                throw new InvalidOperationException("Print isn't paused");
+            }
+
+            throw new NotImplementedException();
+        }
+
+        /// <inheritdoc/>
+        public Task AbortPrintAsync(CancellationToken cancellationToken)
+        {
+            if (this.State != PrinterState.Printing && this.State != PrinterState.Pausing && this.State != PrinterState.Paused)
+            {
+                throw new InvalidOperationException("Not printing");
+            }
+
+            throw new NotImplementedException();
         }
 
         /// <inheritdoc/>
@@ -231,6 +249,8 @@ namespace Print3DCloud.Client.Printers
         {
             this.serialPort?.Dispose();
             this.serialPort = null;
+            this.State = PrinterState.Disconnected;
+            this.Temperatures = null;
         }
 
         private async Task<bool> GetPrinterSupportsAutomaticTemperatureReportingAsync(CancellationToken cancellationToken)
@@ -265,7 +285,7 @@ namespace Print3DCloud.Client.Printers
 
         private async Task SendCommandInternalAsync(string command, CancellationToken cancellationToken)
         {
-            if (!this.IsConnected)
+            if (this.State != PrinterState.Ready)
             {
                 throw new InvalidOperationException("Connection with printer lost");
             }
@@ -292,7 +312,7 @@ namespace Print3DCloud.Client.Printers
 
             command = CommentRegex.Replace(command, string.Empty).Trim();
             string line = $"N{this.currentLineNumber} {command} N{this.currentLineNumber}";
-            line += "*" + MarlinUtilities.GetCommandChecksum(line, this.serialPort.Encoding);
+            line += "*" + MarlinUtilities.GetCommandChecksum(line, this.serialPort!.Encoding);
 
             this.resendLine = this.currentLineNumber;
 
@@ -315,11 +335,11 @@ namespace Print3DCloud.Client.Printers
             this.currentLineNumber++;
         }
 
-        private async Task StartPrintInternalAsync(Stream fileStream, CancellationToken cancellationToken)
+        private async Task PrintFileAsync(Stream fileStream, CancellationToken cancellationToken)
         {
             using var fileReader = new StreamReader(fileStream);
 
-            while (this.IsConnected)
+            while (this.State != PrinterState.Disconnecting && this.State != PrinterState.Disconnected)
             {
                 cancellationToken.ThrowIfCancellationRequested();
 
@@ -339,7 +359,7 @@ namespace Print3DCloud.Client.Printers
 
         private async Task<string?> ReadLineAsync()
         {
-            if (!this.IsConnected)
+            if (this.serialPort == null || !this.serialPort.IsOpen)
             {
                 throw new ObjectDisposedException("Serial port is closed");
             }
@@ -354,7 +374,7 @@ namespace Print3DCloud.Client.Printers
 
         private Task WriteLineAsync(string line)
         {
-            if (!this.IsConnected)
+            if (this.serialPort == null || !this.serialPort.IsOpen)
             {
                 throw new ObjectDisposedException("Serial port is closed");
             }
@@ -367,12 +387,9 @@ namespace Print3DCloud.Client.Printers
 
         private async Task TemperaturePolling()
         {
-            while (this.IsConnected)
+            while (this.State != PrinterState.Disconnecting && this.State != PrinterState.Disconnected)
             {
                 await this.SendCommandAsync(ReportTemperaturesCommand, this.globalCancellationTokenSource.Token).ConfigureAwait(false);
-
-                this.StateChanged?.Invoke(this.State);
-
                 await Task.Delay(TemperatureReportingIntervalSeconds * 1000, this.globalCancellationTokenSource.Token).ConfigureAwait(false);
             }
         }
@@ -398,7 +415,7 @@ namespace Print3DCloud.Client.Printers
 
         private async Task ReceiveLoop()
         {
-            while (this.IsConnected)
+            while (this.State != PrinterState.Disconnecting && this.State != PrinterState.Disconnected)
             {
                 string? line = await this.ReadLineAsync().ConfigureAwait(false);
 
@@ -463,8 +480,9 @@ namespace Print3DCloud.Client.Printers
             {
                 MatchCollection matches = TemperaturesRegex.Matches(line);
 
-                this.bedTemperature = null;
-                this.hotendTemperatures.Clear();
+                TemperatureSensor activeHotendTemperature = null!;
+                TemperatureSensor? bedTemperature = null;
+                var hotendTemperatures = new List<TemperatureSensor>();
 
                 foreach (Match match in matches)
                 {
@@ -475,21 +493,23 @@ namespace Print3DCloud.Client.Printers
 
                     if (sensor == "B")
                     {
-                        this.bedTemperature = temperature;
+                        bedTemperature = temperature;
                     }
                     else if (sensor == "T")
                     {
-                        this.activeHotendTemperature = temperature;
+                        activeHotendTemperature = temperature;
                     }
                     else if (sensor[0] == 'T')
                     {
-                        this.hotendTemperatures.Add(temperature);
+                        hotendTemperatures.Add(temperature);
                     }
                     else
                     {
                         this.logger.LogWarning($"Unexpected sensor name '{sensor}'");
                     }
                 }
+
+                this.Temperatures = new PrinterTemperatures(activeHotendTemperature, hotendTemperatures, bedTemperature);
             }
         }
     }

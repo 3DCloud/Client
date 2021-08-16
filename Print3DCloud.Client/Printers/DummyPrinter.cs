@@ -16,7 +16,6 @@ namespace Print3DCloud.Client.Printers
 
         private Task? connectedTask;
         private CancellationTokenSource? cancellationTokenSource;
-        private bool printing;
 
         /// <summary>
         /// Initializes a new instance of the <see cref="DummyPrinter"/> class.
@@ -29,15 +28,13 @@ namespace Print3DCloud.Client.Printers
         }
 
         /// <inheritdoc/>
-        public event Action<PrinterState>? StateChanged;
-
-        /// <inheritdoc/>
         public event Action<string>? LogMessage;
 
         /// <inheritdoc/>
-        public PrinterState State => new PrinterState(
-            this.connectedTask != null,
-            this.printing,
+        public PrinterState State { get; private set; }
+
+        /// <inheritdoc/>
+        public PrinterTemperatures Temperatures => new(
             new TemperatureSensor("T0", 210 + this.random.NextDouble() * 0.5, 210),
             new[]
             {
@@ -71,12 +68,41 @@ namespace Print3DCloud.Client.Printers
         }
 
         /// <inheritdoc/>
-        public Task PrintAsync(Stream fileStream, CancellationToken cancellationToken)
+        public Task StartPrintAsync(Stream fileStream, CancellationToken cancellationToken)
         {
-            this.logger.LogInformation("Printing");
-            this.LogMessage?.Invoke("Printing");
-            this.printing = true;
+            this.State = PrinterState.Printing;
+
             return Task.CompletedTask;
+        }
+
+        /// <inheritdoc/>
+        public async Task PausePrintAsync(CancellationToken cancellationToken)
+        {
+            this.State = PrinterState.Pausing;
+
+            await Task.Delay(3000, cancellationToken);
+
+            this.State = PrinterState.Paused;
+        }
+
+        /// <inheritdoc/>
+        public async Task ResumePrintAsync(CancellationToken cancellationToken)
+        {
+            this.State = PrinterState.Resuming;
+
+            await Task.Delay(3000, cancellationToken);
+
+            this.State = PrinterState.Printing;
+        }
+
+        /// <inheritdoc/>
+        public async Task AbortPrintAsync(CancellationToken cancellationToken)
+        {
+            this.State = PrinterState.Aborting;
+
+            await Task.Delay(3000, cancellationToken);
+
+            this.State = PrinterState.Ready;
         }
 
         /// <inheritdoc/>
@@ -84,7 +110,7 @@ namespace Print3DCloud.Client.Printers
         {
             this.logger.LogInformation($"SEND {command}");
             this.LogMessage?.Invoke($"SEND {command}");
-            return Task.CompletedTask;
+            return Task.Delay(500, cancellationToken);
         }
 
         /// <inheritdoc/>
@@ -99,7 +125,7 @@ namespace Print3DCloud.Client.Printers
         /// <inheritdoc/>
         public void Dispose()
         {
-            this.printing = false;
+            this.State = PrinterState.Disconnected;
         }
 
         private async Task StatusLoop()
@@ -113,7 +139,6 @@ namespace Print3DCloud.Client.Printers
                 cancellationToken.ThrowIfCancellationRequested();
 
                 this.LogMessage?.Invoke("RECV temperatures");
-                this.StateChanged?.Invoke(this.State);
 
                 await Task.Delay(1000);
             }
