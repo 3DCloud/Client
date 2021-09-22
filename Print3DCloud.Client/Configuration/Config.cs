@@ -51,20 +51,13 @@ namespace Print3DCloud.Client.Configuration
         /// <returns>The loaded configuration or an empty configuration if the file failed to load.</returns>
         public static async Task<Config> LoadAsync(CancellationToken cancellationToken)
         {
-            Config? config = null;
-
-            if (File.Exists(FilePath))
+            if (!File.Exists(FilePath))
             {
-                await using FileStream fileStream = File.OpenRead(FilePath);
-                config = await JsonSerializer.DeserializeAsync<Config>(fileStream, Options, cancellationToken).ConfigureAwait(false);
+                return new Config();
             }
 
-            if (config == null)
-            {
-                config = new Config();
-            }
-
-            return config;
+            await using FileStream fileStream = File.OpenRead(FilePath);
+            return await JsonSerializer.DeserializeAsync<Config>(fileStream, Options, cancellationToken).ConfigureAwait(false) ?? new Config();
         }
 
         /// <summary>
@@ -81,7 +74,7 @@ namespace Print3DCloud.Client.Configuration
         private static string GenerateRandomBase64String()
         {
             var bytes = new byte[36];
-            new RNGCryptoServiceProvider().GetBytes(bytes);
+            RandomNumberGenerator.Create().GetBytes(bytes);
             return Convert.ToBase64String(bytes).Replace('+', '-').Replace('/', '_');
         }
     }

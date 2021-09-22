@@ -2,7 +2,6 @@
 using System.Threading;
 using System.Threading.Tasks;
 using ActionCableSharp;
-using Microsoft.Extensions.Logging;
 using Print3DCloud.Client.ActionCable;
 
 namespace Print3DCloud.Client.Printers
@@ -16,7 +15,7 @@ namespace Print3DCloud.Client.Printers
         /// Initializes a new instance of the <see cref="PrinterController"/> class.
         /// </summary>
         /// <param name="printer">The <see cref="IPrinter"/> to use.</param>
-        /// <param name="subscription/">The <see cref="ActionCableSubscription"/> to use.</param>
+        /// <param name="subscription">The <see cref="ActionCableSubscription"/> to use.</param>
         public PrinterController(IPrinter printer, ActionCableSubscription subscription)
         {
             this.Printer = printer;
