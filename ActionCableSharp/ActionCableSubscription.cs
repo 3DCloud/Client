@@ -37,7 +37,7 @@ namespace ActionCableSharp
         /// <summary>
         /// Event invoked when the server confirms the subscription.
         /// </summary>
-        public event Action? Connected;
+        public event Action? Subscribed;
 
         /// <summary>
         /// Event invoked when the server rejects the subscription.
@@ -47,7 +47,7 @@ namespace ActionCableSharp
         /// <summary>
         /// Event invoked when the subscription is no longer active.
         /// </summary>
-        public event Action? Disconnected;
+        public event Action? Unsubscribed;
 
         /// <summary>
         /// Event invoked when a message is received.
@@ -136,7 +136,7 @@ namespace ActionCableSharp
             }
 
             this.State = SubscriptionState.Unsubscribed;
-            this.Disconnected?.Invoke();
+            this.Unsubscribed?.Invoke();
         }
 
         /// <inheritdoc/>
@@ -152,7 +152,7 @@ namespace ActionCableSharp
             if (this.State == SubscriptionState.Unsubscribed) return;
 
             this.State = SubscriptionState.Unsubscribed;
-            this.Disconnected?.Invoke();
+            this.Unsubscribed?.Invoke();
             this.callbacks.Clear();
         }
 
@@ -180,7 +180,7 @@ namespace ActionCableSharp
             {
                 case MessageType.ConfirmSubscription:
                     this.State = SubscriptionState.Subscribed;
-                    this.Connected?.Invoke();
+                    this.Subscribed?.Invoke();
                     break;
 
                 case MessageType.RejectSubscription:

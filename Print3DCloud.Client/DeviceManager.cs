@@ -55,8 +55,8 @@ namespace Print3DCloud.Client
             this.dummyPrinterId = $"{config.ClientId}_dummy";
             this.subscription = this.actionCableClient.GetSubscription(new ClientIdentifier(this.config.ClientId, this.config.Secret));
 
-            this.subscription.Connected += this.Subscription_Connected;
-            this.subscription.Disconnected += this.Subscription_Disconnected;
+            this.subscription.Subscribed += this.Subscription_Subscribed;
+            this.subscription.Unsubscribed += this.Subscription_Unsubscribed;
 
             this.subscription.RegisterCallback<PrinterConfigurationMessage>(PrinterConfigurationActionName, this.HandlePrinterConfigurationMessage);
         }
@@ -71,7 +71,7 @@ namespace Print3DCloud.Client
             return this.subscription.SubscribeAsync(cancellationToken);
         }
 
-        private async void Subscription_Connected()
+        private async void Subscription_Subscribed()
         {
             this.logger.LogInformation("Subscribed!");
 
@@ -97,7 +97,7 @@ namespace Print3DCloud.Client
             }
         }
 
-        private void Subscription_Disconnected()
+        private void Subscription_Unsubscribed()
         {
             this.logger.LogInformation("Unsubscribed!");
             this.cancellationTokenSource?.Cancel();
