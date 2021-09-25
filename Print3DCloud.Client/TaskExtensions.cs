@@ -11,12 +11,12 @@ namespace Print3DCloud.Client
         /// <summary>
         /// Waits for a <see cref="AutoResetEvent"/> to signal as an asynchronous task.
         /// </summary>
-        /// <param name="manualResetEvent">The <see cref="AutoResetEvent"/> instance.</param>
+        /// <param name="autoResetEvent">The <see cref="AutoResetEvent"/> instance.</param>
         /// <param name="cancellationToken">A <see cref="CancellationToken"/> used to propagate notification that the operation should be canceled.</param>
         /// <returns>A <see cref="Task"/> that completes when the event is signalled.</returns>
-        public static Task WaitOneAsync(this AutoResetEvent manualResetEvent, CancellationToken cancellationToken)
+        public static Task WaitOneAsync(this AutoResetEvent autoResetEvent, CancellationToken cancellationToken)
         {
-            if (manualResetEvent.WaitOne(0))
+            if (autoResetEvent.WaitOne(0))
             {
                 return Task.CompletedTask;
             }
@@ -24,7 +24,7 @@ namespace Print3DCloud.Client
             var completionSource = new TaskCompletionSource();
             cancellationToken.Register(() => completionSource.TrySetCanceled());
 
-            ThreadPool.RegisterWaitForSingleObject(manualResetEvent, (state, timedOut) => completionSource.TrySetResult(), null, Timeout.Infinite, true);
+            ThreadPool.RegisterWaitForSingleObject(autoResetEvent, (_, _) => completionSource.TrySetResult(), null, Timeout.Infinite, true);
 
             return completionSource.Task;
         }

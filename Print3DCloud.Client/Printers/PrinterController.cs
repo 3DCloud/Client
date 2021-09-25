@@ -1,7 +1,10 @@
 ﻿using System;
+using System.IO;
+using System.Net.Http;
 using System.Threading;
 using System.Threading.Tasks;
 using ActionCableSharp;
+using Microsoft.Extensions.Logging;
 using Print3DCloud.Client.ActionCable;
 
 namespace Print3DCloud.Client.Printers
@@ -11,18 +14,23 @@ namespace Print3DCloud.Client.Printers
     /// </summary>
     internal class PrinterController : IDisposable
     {
+        private readonly ILogger<PrinterController> logger;
+
         /// <summary>
         /// Initializes a new instance of the <see cref="PrinterController"/> class.
         /// </summary>
         /// <param name="printer">The <see cref="IPrinter"/> to use.</param>
         /// <param name="subscription">The <see cref="ActionCableSubscription"/> to use.</param>
-        public PrinterController(IPrinter printer, ActionCableSubscription subscription)
+        /// <param name="logger">The <see cref="ILogger{TCategoryName}"/> to use.</param>
+        public PrinterController(IPrinter printer, ActionCableSubscription subscription, ILogger<PrinterController> logger)
         {
             this.Printer = printer;
             this.Subscription = subscription;
+            this.logger = logger;
 
             this.Subscription.RegisterCallback<SendCommandMessage>("send_command", this.SendCommand);
             this.Subscription.RegisterCallback("reconnect", this.ReconnectPrinter);
+            this.Subscription.RegisterCallback<StartPrintMessage>("start_print", this.StartPrint);
         }
 
         /// <summary>
@@ -81,6 +89,22 @@ namespace Print3DCloud.Client.Printers
             }
 
             await this.Printer.ConnectAsync(CancellationToken.None);
+        }
+
+        private async void StartPrint(StartPrintMessage message)
+        {
+            if (this.Printer.State != PrinterState.Ready)
+            {
+                return;
+            }
+
+            this.logger.LogInformation($"Starting print {message.PrintId} from file at '{message.DownloadUrl}'");
+
+            using HttpClient client = new();
+            HttpResponseMessage response = await client.GetAsync(message.DownloadUrl);
+
+            await using Stream fileContentStream = await response.Content.ReadAsStreamAsync();
+            await this.Printer.StartPrintAsync(fileContentStream, CancellationToken.None);
         }
     }
 }

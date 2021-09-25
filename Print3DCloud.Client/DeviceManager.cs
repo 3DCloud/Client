@@ -10,6 +10,7 @@ using Microsoft.Extensions.Logging;
 using Print3DCloud.Client.ActionCable;
 using Print3DCloud.Client.Configuration;
 using Print3DCloud.Client.Printers;
+using Print3DCloud.Client.Printers.Marlin;
 using Print3DCloud.Client.Utilities;
 
 namespace Print3DCloud.Client
@@ -143,7 +144,7 @@ namespace Print3DCloud.Client
 
             ActionCableSubscription subscription = this.actionCableClient.CreateSubscription(new PrinterIdentifier(hardwareIdentifier));
 
-            printerManager = new PrinterController(printer, subscription);
+            printerManager = new PrinterController(printer, subscription, this.serviceProvider.GetRequiredService<ILogger<PrinterController>>());
             this.printers.Add(hardwareIdentifier, printerManager);
 
             try
@@ -177,8 +178,6 @@ namespace Print3DCloud.Client
 
                 await Task.Delay(ScanDevicesIntervalMs, cancellationToken).ConfigureAwait(false);
             }
-
-            this.logger.LogInformation("Device polling loop exited");
         }
 
         private async Task ScanDevices(CancellationToken cancellationToken)
@@ -239,12 +238,25 @@ namespace Print3DCloud.Client
             }
         }
 
-        private Task ReportPrinterStates(CancellationToken cancellationToken)
+        private async Task ReportPrinterStates(CancellationToken cancellationToken)
         {
-            return this.subscription.Perform(
-                new PrinterStatesMessage(
-                    this.printers.ToDictionary(kvp => kvp.Key, kvp => new PrinterStateWithTemperatures(kvp.Value.Printer.State, kvp.Value.Printer.Temperatures))),
-                cancellationToken);
+            if (this.subscription.State != SubscriptionState.Subscribed)
+            {
+                return;
+            }
+
+            try
+            {
+                await this.subscription.Perform(
+                    new PrinterStatesMessage(
+                        this.printers.Select(kvp => new PrinterStateWithTemperatures(kvp.Key, kvp.Value.Printer.State, kvp.Value.Printer.Temperatures))),
+                    cancellationToken);
+            }
+            catch (Exception ex)
+            {
+                this.logger.LogError("Failed to report printer states");
+                this.logger.LogError(ex.ToString());
+            }
         }
     }
 }

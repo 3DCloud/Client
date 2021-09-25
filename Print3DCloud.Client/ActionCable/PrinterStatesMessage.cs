@@ -14,7 +14,7 @@ namespace Print3DCloud.Client.ActionCable
         /// Initializes a new instance of the <see cref="PrinterStatesMessage"/> class.
         /// </summary>
         /// <param name="printerState">The state of the printer.</param>
-        public PrinterStatesMessage(IDictionary<string, PrinterStateWithTemperatures> printerState)
+        public PrinterStatesMessage(IEnumerable<PrinterStateWithTemperatures> printerState)
             : base("printer_states")
         {
             this.Printers = printerState;
@@ -24,7 +24,7 @@ namespace Print3DCloud.Client.ActionCable
         /// <summary>
         /// Gets the states of the printers connected to the client.
         /// </summary>
-        public IDictionary<string, PrinterStateWithTemperatures> Printers { get; }
+        public IEnumerable<PrinterStateWithTemperatures> Printers { get; }
 
         /// <summary>
         /// Gets the time at which the printer states were sampled.
