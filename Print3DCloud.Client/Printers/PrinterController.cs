@@ -52,8 +52,7 @@ namespace Print3DCloud.Client.Printers
         {
             this.Printer.LogMessage += this.Printer_LogMessage;
 
-            await this.Subscription.Unsubscribe(cancellationToken); // TODO temporary until some kind of client-level subscribed state caching is implemented
-            await this.Subscription.Subscribe(cancellationToken);
+            await this.Subscription.SubscribeAsync(cancellationToken);
 
             await this.Printer.ConnectAsync(cancellationToken).ConfigureAwait(false);
         }
@@ -71,7 +70,7 @@ namespace Print3DCloud.Client.Printers
         {
             if (this.Subscription.State != SubscriptionState.Subscribed) return;
 
-            this.Subscription.Perform(new PrinterMessage(message), CancellationToken.None);
+            this.Subscription.PerformAsync(new PrinterMessage(message), CancellationToken.None);
         }
 
         private async void SendCommand(SendCommandMessage message)

@@ -53,7 +53,7 @@ namespace Print3DCloud.Client
             this.hostApplicationLifetime = hostApplicationLifetime;
 
             this.dummyPrinterId = $"{config.ClientId}_dummy";
-            this.subscription = this.actionCableClient.CreateSubscription(new ClientIdentifier(this.config.ClientId, this.config.Secret));
+            this.subscription = this.actionCableClient.GetSubscription(new ClientIdentifier(this.config.ClientId, this.config.Secret));
 
             this.subscription.Connected += this.Subscription_Connected;
             this.subscription.Disconnected += this.Subscription_Disconnected;
@@ -68,7 +68,7 @@ namespace Print3DCloud.Client
         /// <returns>A <see cref="Task"/> that completes once the device manager has started looking for devices.</returns>
         public Task StartAsync(CancellationToken cancellationToken)
         {
-            return this.subscription.Subscribe(cancellationToken);
+            return this.subscription.SubscribeAsync(cancellationToken);
         }
 
         private async void Subscription_Connected()
@@ -81,6 +81,9 @@ namespace Print3DCloud.Client
             {
                 await this.PollDevices(this.cancellationTokenSource.Token);
             }
+            catch (OperationCanceledException)
+            {
+            }
             catch (Exception ex)
             {
                 this.logger.LogError("Device polling task errored; exiting");
@@ -88,7 +91,10 @@ namespace Print3DCloud.Client
                 this.hostApplicationLifetime.StopApplication();
             }
 
-            await this.subscription.Unsubscribe(CancellationToken.None);
+            if (this.subscription.State == SubscriptionState.Subscribed)
+            {
+                await this.subscription.Unsubscribe(CancellationToken.None);
+            }
         }
 
         private void Subscription_Disconnected()
@@ -142,7 +148,7 @@ namespace Print3DCloud.Client
                 return;
             }
 
-            ActionCableSubscription subscription = this.actionCableClient.CreateSubscription(new PrinterIdentifier(hardwareIdentifier));
+            ActionCableSubscription subscription = this.actionCableClient.GetSubscription(new PrinterIdentifier(hardwareIdentifier));
 
             printerManager = new PrinterController(printer, subscription, this.serviceProvider.GetRequiredService<ILogger<PrinterController>>());
             this.printers.Add(hardwareIdentifier, printerManager);
@@ -166,7 +172,7 @@ namespace Print3DCloud.Client
 
             if (Environment.GetCommandLineArgs().Contains("--dummy-printer"))
             {
-                await this.subscription.Perform(new DeviceMessage("dummy0", this.dummyPrinterId, false), CancellationToken.None).ConfigureAwait(false);
+                await this.subscription.PerformAsync(new DeviceMessage("dummy0", this.dummyPrinterId, false), CancellationToken.None).ConfigureAwait(false);
             }
 
             while (this.subscription?.State == SubscriptionState.Subscribed)
@@ -195,7 +201,7 @@ namespace Print3DCloud.Client
 
                 try
                 {
-                    await this.subscription.Perform(new DeviceMessage(portInfo.PortName, portInfo.UniqueId, portInfo.IsPortableUniqueId), cancellationToken).ConfigureAwait(false);
+                    await this.subscription.PerformAsync(new DeviceMessage(portInfo.PortName, portInfo.UniqueId, portInfo.IsPortableUniqueId), cancellationToken).ConfigureAwait(false);
                     this.discoveredSerialDevices.Add(portInfo.UniqueId, portInfo);
                 }
                 catch (Exception ex)
@@ -240,14 +246,14 @@ namespace Print3DCloud.Client
 
         private async Task ReportPrinterStates(CancellationToken cancellationToken)
         {
-            if (this.subscription.State != SubscriptionState.Subscribed)
+            if (this.actionCableClient.State != ClientState.Connected || this.subscription.State != SubscriptionState.Subscribed)
             {
                 return;
             }
 
             try
             {
-                await this.subscription.Perform(
+                await this.subscription.PerformAsync(
                     new PrinterStatesMessage(
                         this.printers.Select(kvp => new PrinterStateWithTemperatures(kvp.Key, kvp.Value.Printer.State, kvp.Value.Printer.Temperatures))),
                     cancellationToken);

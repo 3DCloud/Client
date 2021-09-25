@@ -70,7 +70,7 @@ namespace ActionCableSharp
         /// <param name="data"><see cref="ActionMessage"/> that contains the method name and optional data.</param>
         /// <param name="cancellationToken">A <see cref="CancellationToken"/> used to propagate notification that the operation should be canceled.</param>
         /// <returns>A <see cref="Task"/> that completes once the message has been sent.</returns>
-        public Task Perform(ActionMessage data, CancellationToken cancellationToken)
+        public Task PerformAsync(ActionMessage data, CancellationToken cancellationToken)
         {
             if (this.State != SubscriptionState.Subscribed) throw new InvalidOperationException("Not subscribed");
 
@@ -82,7 +82,7 @@ namespace ActionCableSharp
         /// </summary>
         /// <param name="cancellationToken">A <see cref="CancellationToken"/> used to propagate notification that the operation should be canceled.</param>
         /// <returns>A <see cref="Task"/> that completes once the subscription request has been sent to the server.</returns>
-        public async Task Subscribe(CancellationToken cancellationToken)
+        public async Task SubscribeAsync(CancellationToken cancellationToken)
         {
             if (this.client.State == ClientState.Connected)
             {
@@ -158,7 +158,7 @@ namespace ActionCableSharp
 
         private async void Client_Connected()
         {
-            await this.Subscribe(CancellationToken.None);
+            await this.SubscribeAsync(CancellationToken.None);
         }
 
         private async void Client_Disconnected()
@@ -214,7 +214,7 @@ namespace ActionCableSharp
                 }
                 else
                 {
-                    del.Method.Invoke(del.Target, Array.Empty<object>());
+                    del.Method.Invoke(del.Target, null);
                 }
             }
         }

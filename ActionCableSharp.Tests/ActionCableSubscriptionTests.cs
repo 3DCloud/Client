@@ -23,7 +23,7 @@ namespace ActionCableSharp.Tests
             var subscription = new ActionCableSubscription(mockClient.Object, identifier);
 
             // Act
-            await subscription.Subscribe(cancellationToken).ConfigureAwait(false);
+            await subscription.SubscribeAsync(cancellationToken).ConfigureAwait(false);
 
             // Assert
             mockClient.Verify(c => c.SendMessageAsync("subscribe", identifier, cancellationToken, null), Times.Once);
@@ -48,7 +48,7 @@ namespace ActionCableSharp.Tests
             var subscription = new ActionCableSubscription(mockClient.Object, identifier);
 
             // Act
-            await subscription.Subscribe(cancellationToken).ConfigureAwait(false);
+            await subscription.SubscribeAsync(cancellationToken).ConfigureAwait(false);
 
             // Assert
             mockClient.Verify(c => c.SendMessageAsync("subscribe", identifier, cancellationToken, null), Times.Never);
@@ -74,7 +74,7 @@ namespace ActionCableSharp.Tests
             };
 
             // Act
-            await subscription.Subscribe(CancellationToken.None).ConfigureAwait(false);
+            await subscription.SubscribeAsync(CancellationToken.None).ConfigureAwait(false);
             mockClient.Raise(c => c.MessageReceived += null, subscribeMessage);
 
             // Assert
@@ -101,7 +101,7 @@ namespace ActionCableSharp.Tests
             };
 
             // Act
-            await subscription.Subscribe(CancellationToken.None).ConfigureAwait(false);
+            await subscription.SubscribeAsync(CancellationToken.None).ConfigureAwait(false);
             mockClient.Raise(c => c.MessageReceived += null, subscribeMessage);
 
             // Assert

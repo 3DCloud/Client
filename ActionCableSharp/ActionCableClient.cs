@@ -23,12 +23,16 @@ namespace ActionCableSharp
 
         private readonly ILogger<ActionCableClient> logger;
         private readonly IWebSocketFactory webSocketFactory;
-        private readonly SemaphoreSlim semaphore;
-        private readonly Random random;
+
+        private readonly SemaphoreSlim semaphore = new(1);
+        private readonly Random random = new();
+        private readonly Dictionary<Identifier, ActionCableSubscription> subscriptions = new();
 
         private IWebSocket? webSocket;
         private CancellationTokenSource? loopCancellationTokenSource;
         private bool shouldReconnectAfterClose;
+
+        private bool disposed;
 
         /// <summary>
         /// Initializes a new instance of the <see cref="ActionCableClient"/> class.
@@ -73,8 +77,6 @@ namespace ActionCableSharp
         {
             this.Uri = uri;
             this.Origin = origin;
-            this.State = ClientState.Disconnected;
-            this.AdditionalHeaders = new List<(string, string?)>();
 
             var namingPolicy = new SnakeCaseNamingPolicy();
 
@@ -91,8 +93,6 @@ namespace ActionCableSharp
 
             this.logger = logger;
             this.webSocketFactory = webSocketFactory;
-            this.semaphore = new SemaphoreSlim(1);
-            this.random = new Random();
         }
 
         /// <summary>
@@ -128,12 +128,12 @@ namespace ActionCableSharp
         /// <summary>
         /// Gets the additional headers used when initiating a connection.
         /// </summary>
-        public virtual List<(string HeaderName, string? HeaderValue)> AdditionalHeaders { get; }
+        public virtual List<(string HeaderName, string? HeaderValue)> AdditionalHeaders { get; } = new();
 
         /// <summary>
         /// Gets the current connection state of the client.
         /// </summary>
-        public virtual ClientState State { get; private set; }
+        public virtual ClientState State { get; private set; } = ClientState.Disconnected;
 
         /// <summary>
         /// Initiates the WebSocket connection.
@@ -142,6 +142,8 @@ namespace ActionCableSharp
         /// <returns>A <see cref="Task"/> that completes once the client is connected.</returns>
         public virtual Task ConnectAsync(CancellationToken cancellationToken)
         {
+            if (this.disposed) throw new ObjectDisposedException(nameof(ActionCableClient));
+
             this.State = ClientState.Connecting;
 
             return this.ReconnectAsync(cancellationToken);
@@ -154,11 +156,12 @@ namespace ActionCableSharp
         /// <returns>A <see cref="Task"/> that completes once the client is disconnected.</returns>
         public virtual async Task DisconnectAsync(CancellationToken cancellationToken)
         {
+            if (this.disposed) throw new ObjectDisposedException(nameof(ActionCableClient));
             if (this.State == ClientState.Disconnecting || this.State == ClientState.Disconnected) return;
 
             this.State = ClientState.Disconnecting;
 
-            if (this.webSocket != null)
+            if (this.webSocket != null && this.webSocket.IsConnected)
             {
                 await this.webSocket.CloseAsync(WebSocketCloseStatus.NormalClosure, "Closed by client", cancellationToken).ConfigureAwait(false);
             }
@@ -172,17 +175,24 @@ namespace ActionCableSharp
         /// </summary>
         /// <param name="identifier">Identifier for the channel.</param>
         /// <returns>A reference to the <see cref="ActionCableSubscription"/> linked to the specified <paramref name="identifier"/>.</returns>
-        public virtual ActionCableSubscription CreateSubscription(Identifier identifier)
+        public virtual ActionCableSubscription GetSubscription(Identifier identifier)
         {
-            return new ActionCableSubscription(this, identifier);
+            if (this.disposed) throw new ObjectDisposedException(nameof(ActionCableClient));
+
+            if (!this.subscriptions.TryGetValue(identifier, out ActionCableSubscription? subscription))
+            {
+                subscription = new ActionCableSubscription(this, identifier);
+                this.subscriptions.Add(identifier, subscription);
+            }
+
+            return subscription;
         }
 
         /// <inheritdoc/>
-        public virtual void Dispose()
+        public void Dispose()
         {
-            this.State = ClientState.Disconnected;
-            this.webSocket?.Dispose();
-            this.Disconnected?.Invoke();
+            this.Dispose(true);
+            GC.SuppressFinalize(this);
         }
 
         /// <summary>
@@ -288,6 +298,23 @@ namespace ActionCableSharp
             }
         }
 
+        /// <summary>
+        /// Cleans up managed objects that implement IDiposable (if <paramref name="disposing"/> is true) and unmanaged resources/objects.
+        /// </summary>
+        /// <param name="disposing">Whether this is being called from a Dispose method or not.</param>
+        protected virtual void Dispose(bool disposing)
+        {
+            if (disposing)
+            {
+                this.webSocket?.Dispose();
+            }
+
+            this.State = ClientState.Disconnected;
+            this.Disconnected?.Invoke();
+
+            this.disposed = true;
+        }
+
         private async Task ReconnectAsync(CancellationToken cancellationToken)
         {
             int reconnectDelayIndex = 0;
@@ -322,7 +349,7 @@ namespace ActionCableSharp
                     this.shouldReconnectAfterClose = false;
 
                     // don't await these since they run until the connection is closed/interrupted
-                    _ = Task.Run(this.ReceiveLoop, cancellationToken).ContinueWith(this.HandleReceiveLoopTaskCompleted);
+                    _ = Task.Run(() => this.ReceiveLoop(this.loopCancellationTokenSource.Token), cancellationToken).ContinueWith(this.HandleReceiveLoopTaskCompleted);
                 }
                 catch (WebSocketException)
                 {
@@ -337,12 +364,8 @@ namespace ActionCableSharp
             }
         }
 
-        private async Task ReceiveLoop()
+        private async Task ReceiveLoop(CancellationToken cancellationToken)
         {
-            if (this.loopCancellationTokenSource == null) return;
-
-            CancellationToken cancellationToken = this.loopCancellationTokenSource.Token;
-
             this.logger.LogInformation($"Started incoming message task");
 
             while (this.webSocket?.IsConnected == true)
@@ -404,6 +427,7 @@ namespace ActionCableSharp
             if (this.shouldReconnectAfterClose || (task.IsFaulted && task.Exception!.InnerExceptions.Any(ex => ex is WebSocketException)))
             {
                 this.State = ClientState.Reconnecting;
+                await this.DisconnectAsync(CancellationToken.None);
                 await this.ReconnectAsync(CancellationToken.None).ConfigureAwait(false);
             }
             else
