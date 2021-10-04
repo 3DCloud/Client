@@ -5,7 +5,6 @@ using System.Text.RegularExpressions;
 using System.Threading;
 using System.Threading.Tasks;
 using Microsoft.Extensions.Logging;
-using RJCP.IO.Ports;
 
 namespace Print3DCloud.Client.Printers.Marlin
 {
@@ -39,14 +38,20 @@ namespace Print3DCloud.Client.Printers.Marlin
         /// Initializes a new instance of the <see cref="SerialCommandManager"/> class.
         /// </summary>
         /// <param name="logger">The <see cref="ILogger{TCategoryName}"/> to use.</param>
-        /// <param name="serialPort">The <see cref="SerialPortStream"/> to use to communicate with the printer.</param>
-        public SerialCommandManager(ILogger<MarlinPrinter> logger, SerialPortStream serialPort)
+        /// <param name="stream">The <see cref="Stream"/> to use to communicate with the printer.</param>
+        /// <param name="encoding">The <see cref="Encoding"/> to use when communicating with the printer.</param>
+        /// <param name="newLine">The new line character(s) to use when communicating with the printer.</param>
+        public SerialCommandManager(ILogger<MarlinPrinter> logger, Stream stream, Encoding encoding, string newLine)
         {
-            this.logger = logger;
-            this.streamReader = new StreamReader(serialPort, serialPort.Encoding);
-            this.streamWriter = new StreamWriter(serialPort, serialPort.Encoding)
+            if (stream == null) throw new ArgumentNullException(nameof(stream));
+            if (encoding == null) throw new ArgumentNullException(nameof(encoding));
+            if (string.IsNullOrEmpty(newLine)) throw new ArgumentNullException(nameof(newLine));
+
+            this.logger = logger ?? throw new ArgumentNullException(nameof(logger));
+            this.streamReader = new StreamReader(stream, encoding);
+            this.streamWriter = new StreamWriter(stream, encoding)
             {
-                NewLine = serialPort.NewLine,
+                NewLine = newLine,
                 AutoFlush = true,
             };
         }
@@ -237,6 +242,8 @@ namespace Print3DCloud.Client.Printers.Marlin
             {
                 this.streamWriter.Dispose();
                 this.streamReader.Dispose();
+                this.sendCommandResetEvent.Dispose();
+                this.commandAcknowledgedResetEvent.Dispose();
             }
 
             this.disposed = true;

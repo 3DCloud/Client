@@ -86,7 +86,7 @@ namespace Print3DCloud.Client.Printers.Marlin
 
             serialPort.Open();
 
-            this.serialCommandProcessor = new SerialCommandManager(this.logger, serialPort);
+            this.serialCommandProcessor = new SerialCommandManager(this.logger, serialPort, serialPort.Encoding, serialPort.NewLine);
             this.globalCancellationTokenSource = new CancellationTokenSource();
 
             await this.serialCommandProcessor.WaitForStartupAsync(cancellationToken);
