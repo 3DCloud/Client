@@ -28,7 +28,7 @@ namespace Print3DCloud.Client.Tests.Printers.Marlin
 
             Assert.Throws<ArgumentNullException>("logger", () =>
             {
-                _ = new SerialCommandManager(null, stream, Encoding.ASCII, "\n");
+                _ = new SerialCommandManager(null!, stream, Encoding.ASCII, "\n");
             });
         }
 
@@ -40,7 +40,7 @@ namespace Print3DCloud.Client.Tests.Printers.Marlin
 
             Assert.Throws<ArgumentNullException>("stream", () =>
             {
-                _ = new SerialCommandManager(loggerMock.Object, null, Encoding.ASCII, "\n");
+                _ = new SerialCommandManager(loggerMock.Object, null!, Encoding.ASCII, "\n");
             });
         }
 
@@ -52,7 +52,7 @@ namespace Print3DCloud.Client.Tests.Printers.Marlin
 
             Assert.Throws<ArgumentNullException>("encoding", () =>
             {
-                _ = new SerialCommandManager(loggerMock.Object, stream, null, "\n");
+                _ = new SerialCommandManager(loggerMock.Object, stream, null!, "\n");
             });
         }
 
@@ -64,7 +64,7 @@ namespace Print3DCloud.Client.Tests.Printers.Marlin
 
             Assert.Throws<ArgumentNullException>("newLine", () =>
             {
-                _ = new SerialCommandManager(loggerMock.Object, stream, Encoding.ASCII, null);
+                _ = new SerialCommandManager(loggerMock.Object, stream, Encoding.ASCII, null!);
             });
         }
 
@@ -133,7 +133,7 @@ namespace Print3DCloud.Client.Tests.Printers.Marlin
             Assert.Equal(new[] { "M110 N0" }, sim.GetWrittenLines());
         }
 
-        private static SerialCommandManager CreateSerialCommandManager(Stream stream = null, ILogger<MarlinPrinter> logger = null)
+        private static SerialCommandManager CreateSerialCommandManager(Stream? stream = null, ILogger<MarlinPrinter>? logger = null)
         {
             if (stream == null)
             {

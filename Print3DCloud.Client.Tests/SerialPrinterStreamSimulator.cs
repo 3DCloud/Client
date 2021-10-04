@@ -112,7 +112,7 @@ namespace Print3DCloud.Client.Tests
                     string str = this.stringBuilder.ToString();
                     this.stringBuilder = new StringBuilder();
 
-                    if (this.responses.TryGetValue(str, out string value))
+                    if (this.responses.TryGetValue(str, out string? value))
                     {
                         long prevPosition = this.InputStream.Position;
                         this.InputStream.Position = this.InputStream.Length;
