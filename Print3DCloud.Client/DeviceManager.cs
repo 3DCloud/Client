@@ -134,7 +134,7 @@ namespace Print3DCloud.Client
                 switch (driver)
                 {
                     case MarlinPrinter.DriverId:
-                        printer = new MarlinPrinter(this.serviceProvider.GetRequiredService<ILogger<MarlinPrinter>>(), portInfo.PortName);
+                        printer = new MarlinPrinter(new SerialPortStreamFactory(), this.serviceProvider.GetRequiredService<ILogger<MarlinPrinter>>(), portInfo.PortName);
                         break;
 
                     default:

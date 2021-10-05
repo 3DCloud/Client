@@ -1,4 +1,5 @@
 ﻿using System;
+using System.Collections.Generic;
 using System.IO;
 using System.Threading;
 using System.Threading.Tasks;
@@ -36,7 +37,7 @@ namespace Print3DCloud.Client.Printers
         /// <inheritdoc/>
         public PrinterTemperatures Temperatures => new(
             new TemperatureSensor("T0", 210 + this.random.NextDouble() * 0.5, 210),
-            new[]
+            new List<TemperatureSensor>
             {
                 new TemperatureSensor("T0", 210 + this.random.NextDouble() * 0.5, 210),
                 new TemperatureSensor("T1", 190 + this.random.NextDouble() * 0.5, 190),

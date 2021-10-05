@@ -24,9 +24,9 @@ namespace Print3DCloud.Client.Printers.Marlin
         private const string AutomaticTemperatureReportingCommand = "M155 S{0}";
         private const int TemperatureReportingIntervalSeconds = 1;
 
-        private static readonly Regex IsTemperatureLineRegex = new(@"T:[\d\.]+ \/[\d\.]+ (?:(?:B|T\d|@\d):[\d\.]+ \/[\d\.]+ ?)+");
         private static readonly Regex TemperaturesRegex = new(@"(?<sensor>B|T\d?):(?<current>[\d\.]+) \/(?<target>[\d\.]+)");
 
+        private readonly ISerialPortStreamFactory printerStreamFactory;
         private readonly ILogger<MarlinPrinter> logger;
         private readonly string portName;
         private readonly int baudRate;
@@ -42,11 +42,13 @@ namespace Print3DCloud.Client.Printers.Marlin
         /// <summary>
         /// Initializes a new instance of the <see cref="MarlinPrinter"/> class.
         /// </summary>
+        /// <param name="printerStreamFactory">The factory to use when creating a stream for communicating with the printer.</param>
         /// <param name="logger">The logger that should be used for this printer.</param>
         /// <param name="portName">Name of the serial port to which this printer should connect.</param>
         /// <param name="baudRate">The baud rate to be used for serial communication.</param>
-        public MarlinPrinter(ILogger<MarlinPrinter> logger, string portName, int baudRate = 250_000)
+        public MarlinPrinter(ISerialPortStreamFactory printerStreamFactory, ILogger<MarlinPrinter> logger, string portName, int baudRate = 250_000)
         {
+            this.printerStreamFactory = printerStreamFactory;
             this.logger = logger;
             this.portName = portName;
             this.baudRate = baudRate;
@@ -73,12 +75,7 @@ namespace Print3DCloud.Client.Printers.Marlin
 
             this.logger.LogInformation($"Connecting to Marlin printer at port '{this.portName}'...");
 
-            SerialPortStream serialPort = new(this.portName, this.baudRate)
-            {
-                RtsEnable = true,
-                DtrEnable = true,
-                NewLine = "\n",
-            };
+            ISerialPortStream serialPort = this.printerStreamFactory.CreatePrinterStream(this.portName, this.baudRate);
 
             // clean up anything that's currently there
             serialPort.DiscardInBuffer();
@@ -86,7 +83,7 @@ namespace Print3DCloud.Client.Printers.Marlin
 
             serialPort.Open();
 
-            this.serialCommandProcessor = new SerialCommandManager(this.logger, serialPort, serialPort.Encoding, serialPort.NewLine);
+            this.serialCommandProcessor = new SerialCommandManager(this.logger, (Stream)serialPort, serialPort.Encoding, serialPort.NewLine);
             this.globalCancellationTokenSource = new CancellationTokenSource();
 
             await this.serialCommandProcessor.WaitForStartupAsync(cancellationToken);
@@ -95,7 +92,7 @@ namespace Print3DCloud.Client.Printers.Marlin
 
             this.globalCancellationTokenSource = new CancellationTokenSource();
 
-            if (!await this.GetPrinterSupportsAutomaticTemperatureReportingAsync(cancellationToken))
+            if (!await this.GetPrinterSupportsAutomaticTemperatureReportingAsync(this.serialCommandProcessor, cancellationToken))
             {
                 this.temperaturePollingTask = Task.Run(() => this.TemperaturePolling(this.globalCancellationTokenSource.Token), cancellationToken).ContinueWith(this.HandleTemperaturePollingTaskCompleted, CancellationToken.None);
             }
@@ -110,7 +107,7 @@ namespace Print3DCloud.Client.Printers.Marlin
         {
             if (this.serialCommandProcessor == null)
             {
-                throw new NullReferenceException($"{nameof(this.serialCommandProcessor)} is not defined");
+                throw new InvalidOperationException($"Printer isn't connected");
             }
 
             return this.serialCommandProcessor.SendCommandAsync(command, cancellationToken);
@@ -149,7 +146,8 @@ namespace Print3DCloud.Client.Printers.Marlin
             {
             }
 
-            this.Dispose();
+            this.State = PrinterState.Disconnected;
+            this.Temperatures = null;
 
             this.logger.LogDebug("Disconnected successfully");
         }
@@ -206,20 +204,52 @@ namespace Print3DCloud.Client.Printers.Marlin
         /// <inheritdoc/>
         public void Dispose()
         {
-            this.State = PrinterState.Disconnected;
-            this.Temperatures = null;
+            this.Dispose(true);
         }
 
-        private async Task<bool> GetPrinterSupportsAutomaticTemperatureReportingAsync(CancellationToken cancellationToken)
+        /// <summary>
+        /// Releases the unmanaged resources used by the System.IO.TextReader and optionally releases the managed resources.
+        /// </summary>
+        /// <param name="disposing">true to release both managed and unmanaged resources; false to release only unmanaged resources.</param>
+        protected void Dispose(bool disposing)
         {
-            if (this.serialCommandProcessor == null)
+            if (disposing)
             {
-                throw new NullReferenceException($"{nameof(this.serialCommandProcessor)} is not defined");
-            }
+                this.State = PrinterState.Disconnected;
+                this.Temperatures = null;
 
+                this.serialCommandProcessor?.Dispose();
+                this.serialCommandProcessor = null;
+
+                if (this.globalCancellationTokenSource != null)
+                {
+                    this.globalCancellationTokenSource.Cancel();
+                    this.globalCancellationTokenSource.Dispose();
+                    this.globalCancellationTokenSource = null;
+                }
+
+                if (this.printCancellationTokenSource != null)
+                {
+                    this.printCancellationTokenSource.Cancel();
+                    this.printCancellationTokenSource.Dispose();
+                    this.printCancellationTokenSource = null;
+                }
+            }
+        }
+
+        private static TemperatureSensor GetSensorFromMatch(Match match)
+        {
+            string sensor = match.Groups["sensor"].Value;
+            double currentTemperature = double.Parse(match.Groups["current"].Value, CultureInfo.InvariantCulture);
+            double targetTemperature = double.Parse(match.Groups["target"].Value, CultureInfo.InvariantCulture);
+            return new(sensor, currentTemperature, targetTemperature);
+        }
+
+        private async Task<bool> GetPrinterSupportsAutomaticTemperatureReportingAsync(SerialCommandManager serialCommandProcessor, CancellationToken cancellationToken)
+        {
             this.logger.LogTrace("Checking if printer supports automatic temperature reporting");
 
-            await this.serialCommandProcessor.SendCommandAsync(string.Format(AutomaticTemperatureReportingCommand, TemperatureReportingIntervalSeconds), cancellationToken).ConfigureAwait(false);
+            Task sendCommandTask = serialCommandProcessor.SendCommandAsync(string.Format(AutomaticTemperatureReportingCommand, TemperatureReportingIntervalSeconds), cancellationToken);
             MarlinMessage line;
             bool result = true;
 
@@ -227,14 +257,16 @@ namespace Print3DCloud.Client.Printers.Marlin
             {
                 cancellationToken.ThrowIfCancellationRequested();
 
-                line = await this.serialCommandProcessor.ReceiveLineAsync(cancellationToken).ConfigureAwait(false);
+                line = await serialCommandProcessor.ReceiveLineAsync(cancellationToken).ConfigureAwait(false);
 
                 if (line.Type == MarlinMessageType.UnknownCommand)
                 {
                     result = false;
                 }
             }
-            while (line?.Type != MarlinMessageType.CommandAcknowledgement);
+            while (line.Type != MarlinMessageType.CommandAcknowledgement && !sendCommandTask.IsCompleted);
+
+            await sendCommandTask.ConfigureAwait(false);
 
             return result;
         }
@@ -330,41 +362,38 @@ namespace Print3DCloud.Client.Printers.Marlin
 
         private void HandleLine(string line)
         {
-            if (IsTemperatureLineRegex.IsMatch(line))
+            Match match = TemperaturesRegex.Match(line);
+
+            if (!match.Success)
             {
-                MatchCollection matches = TemperaturesRegex.Matches(line);
+                return;
+            }
 
-                TemperatureSensor activeHotendTemperature = null!;
-                TemperatureSensor? bedTemperature = null;
-                var hotendTemperatures = new List<TemperatureSensor>();
+            // first match is always active hotend
+            TemperatureSensor activeHotendTemperature = GetSensorFromMatch(match);
 
-                foreach (Match match in matches)
+            TemperatureSensor? bedTemperature = null;
+            List<TemperatureSensor> hotendTemperatures = new();
+
+            match = match.NextMatch();
+
+            while (match.Success)
+            {
+                TemperatureSensor temperature = GetSensorFromMatch(match);
+
+                if (temperature.Name == "B")
                 {
-                    string sensor = match.Groups["sensor"].Value;
-                    double currentTemperature = double.Parse(match.Groups["current"].Value, CultureInfo.InvariantCulture);
-                    double targetTemperature = double.Parse(match.Groups["target"].Value, CultureInfo.InvariantCulture);
-                    var temperature = new TemperatureSensor(sensor, currentTemperature, targetTemperature);
-
-                    if (sensor == "B")
-                    {
-                        bedTemperature = temperature;
-                    }
-                    else if (sensor == "T")
-                    {
-                        activeHotendTemperature = temperature;
-                    }
-                    else if (sensor[0] == 'T')
-                    {
-                        hotendTemperatures.Add(temperature);
-                    }
-                    else
-                    {
-                        this.logger.LogWarning($"Unexpected sensor name '{sensor}'");
-                    }
+                    bedTemperature = temperature;
+                }
+                else
+                {
+                    hotendTemperatures.Add(temperature);
                 }
 
-                this.Temperatures = new PrinterTemperatures(activeHotendTemperature, hotendTemperatures, bedTemperature);
+                match = match.NextMatch();
             }
+
+            this.Temperatures = new PrinterTemperatures(activeHotendTemperature, hotendTemperatures, bedTemperature);
         }
     }
 }
