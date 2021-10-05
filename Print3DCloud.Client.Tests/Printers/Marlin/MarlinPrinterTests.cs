@@ -1,6 +1,8 @@
 ﻿using System;
+using System.IO;
 using System.Text;
 using System.Text.RegularExpressions;
+using System.Threading;
 using System.Threading.Tasks;
 using Moq;
 using Print3DCloud.Client.Printers;
@@ -99,6 +101,15 @@ namespace Print3DCloud.Client.Tests.Printers.Marlin
         }
 
         [Fact]
+        public async Task Dispose_WhenAlreadyDisposed_DoesNotBreak()
+        {
+            MarlinPrinter printer = await CreateConnectedPrinter();
+            printer.Dispose();
+            printer.Dispose();
+            Assert.Equal(PrinterState.Disconnected, printer.State);
+        }
+
+        [Fact]
         public async Task ConnectedPrinter_ReceivesTemperaturesMessage_ParsesTemperatures()
         {
             Mock<SerialPrinterStreamSimulator> simulatorMock = CreateSerialPort("COM0", 125_000);
@@ -166,7 +177,7 @@ namespace Print3DCloud.Client.Tests.Printers.Marlin
         }
 
         [Fact]
-        public async Task SendCommandBlockAsync()
+        public async Task SendCommandBlockAsync_WithMultipleCommands_SendsAllCommands()
         {
             Mock<SerialPrinterStreamSimulator> simulatorMock = CreateSerialPort("COM0", 125_000);
             SerialPrinterStreamSimulator sim = simulatorMock.Object;
@@ -192,7 +203,53 @@ namespace Print3DCloud.Client.Tests.Printers.Marlin
                 l => Assert.Equal("N4 M140 S60*87", l));
         }
 
-        private static async Task<MarlinPrinter> CreateConnectedPrinter(Mock<SerialPrinterStreamSimulator>? mock = null)
+        [Fact]
+        public async Task DisconnectAsync_WhenPrinterIsIdle_DisconnectsSuccessfully()
+        {
+            MarlinPrinter printer = await CreateConnectedPrinter();
+
+            Task disconnectTask = printer.DisconnectAsync();
+
+            Assert.Equal(PrinterState.Disconnecting, printer.State);
+
+            await disconnectTask;
+
+            Assert.Equal(PrinterState.Disconnected, printer.State);
+        }
+
+        [Fact]
+        public async Task DisconnectAsync_WhenPrinterIsPrinting_DisconnectsSuccessfully()
+        {
+            MarlinPrinter printer = await CreateConnectedPrinter();
+
+            using MemoryStream printStream = new(Encoding.ASCII.GetBytes("G0 X0 Y0"));
+
+            await printer.StartPrintAsync(printStream, CancellationToken.None);
+
+            Assert.Equal(PrinterState.Printing, printer.State);
+
+            await printer.DisconnectAsync();
+
+            Assert.Equal(PrinterState.Disconnected, printer.State);
+        }
+
+        [Fact]
+        public async Task StartPrintAsync_WhenPrinterIsNotReady_ThrowsException()
+        {
+            Mock<ISerialPortStreamFactory> serialPortStreamFactoryMock = new();
+            serialPortStreamFactoryMock.Setup(f => f.CreatePrinterStream(It.IsAny<string>(), It.IsAny<int>())).Returns<string, int>((s, i) => CreateSerialPort("COM0", 125_000).As<ISerialPortStream>().Object);
+
+            MarlinPrinter printer = new(serialPortStreamFactoryMock.Object, TestHelpers.CreateLogger<MarlinPrinter>().Object, "COM0", 125_000);
+
+            InvalidOperationException exception = await Assert.ThrowsAsync<InvalidOperationException>(async () =>
+            {
+                await printer.StartPrintAsync(new MemoryStream(), CancellationToken.None);
+            });
+
+            Assert.Equal("Printer isn't ready", exception.Message);
+        }
+
+        private static async Task<MarlinPrinter> CreateConnectedPrinter(Mock<SerialPrinterStreamSimulator>? mock = null, bool canReportTemperatures = true)
         {
             if (mock == null)
             {
@@ -202,7 +259,7 @@ namespace Print3DCloud.Client.Tests.Printers.Marlin
             SerialPrinterStreamSimulator sim = mock.Object;
 
             sim.RegisterResponse("N0 M110 N0*125", "ok");
-            sim.RegisterResponse(new Regex(@"N1 M155 S\d+\*\d+"), "ok");
+            sim.RegisterResponse(new Regex(@"N1 (M155 S\d+)\*\d+"), canReportTemperatures ? "ok" : "echo:Unknown command: \"$1\"\nok");
 
             Mock<ISerialPortStreamFactory> serialPortStreamFactoryMock = new();
             serialPortStreamFactoryMock.Setup(f => f.CreatePrinterStream(It.IsAny<string>(), It.IsAny<int>())).Returns<string, int>((s, i) => mock.As<ISerialPortStream>().Object);

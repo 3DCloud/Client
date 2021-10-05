@@ -127,10 +127,15 @@ namespace Print3DCloud.Client.Printers.Marlin
         /// <inheritdoc/>
         public async Task DisconnectAsync()
         {
+            this.State = PrinterState.Disconnecting;
+
             this.logger.LogDebug("Waiting for all tasks to complete...");
 
             this.globalCancellationTokenSource?.Cancel();
             this.globalCancellationTokenSource = null;
+
+            this.serialCommandProcessor?.Dispose();
+            this.serialCommandProcessor = null;
 
             var tasks = new List<Task>(3);
 
@@ -163,7 +168,7 @@ namespace Print3DCloud.Client.Printers.Marlin
             this.State = PrinterState.Printing;
             this.printCancellationTokenSource = new CancellationTokenSource();
 
-            this.printTask = this.PrintFileAsync(fileStream, this.printCancellationTokenSource.Token);
+            this.printTask = Task.Run(() => this.RunPrintAsync(fileStream, this.printCancellationTokenSource.Token), cancellationToken);
 
             return Task.CompletedTask;
         }
@@ -271,7 +276,7 @@ namespace Print3DCloud.Client.Printers.Marlin
             return result;
         }
 
-        private async Task PrintFileAsync(Stream fileStream, CancellationToken cancellationToken)
+        private async Task RunPrintAsync(Stream fileStream, CancellationToken cancellationToken)
         {
             using var streamReader = new StreamReader(fileStream);
 
@@ -287,13 +292,14 @@ namespace Print3DCloud.Client.Printers.Marlin
 
                     await this.SendCommandAsync(line, cancellationToken).ConfigureAwait(false);
                 }
+
+                this.State = PrinterState.Ready;
             }
             catch (Exception ex)
             {
                 this.logger.LogError(ex?.ToString());
+                this.State = PrinterState.Errored;
             }
-
-            this.State = PrinterState.Ready;
         }
 
         private async Task TemperaturePolling(CancellationToken cancellationToken)

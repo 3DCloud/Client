@@ -121,8 +121,7 @@ namespace Print3DCloud.Client.Printers.Marlin
                 // reset current line number if necessary
                 if (this.currentLineNumber == int.MaxValue)
                 {
-                    // we don't allow cancelling since not waiting for acknowledgement can make us enter a broken state
-                    await this.SendAndWaitForAcknowledgementAsync(SetLineNumberCommand, CancellationToken.None).ConfigureAwait(false);
+                    await this.SendAndWaitForAcknowledgementAsync(SetLineNumberCommand, cancellationToken).ConfigureAwait(false);
 
                     this.currentLineNumber = 1;
                 }
