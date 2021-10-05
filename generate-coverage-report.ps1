@@ -1,3 +1,10 @@
+$ErrorActionPreference = "Stop"
+
+if (!(dotnet tool list --global | Select-String "dotnet-reportgenerator-globaltool" -quiet))
+{
+    dotnet tool install -g dotnet-reportgenerator-globaltool
+}
+
 if (Test-Path ActionCableSharp.Tests/TestResults)
 {
     Remove-Item ActionCableSharp.Tests/TestResults -Recurse
