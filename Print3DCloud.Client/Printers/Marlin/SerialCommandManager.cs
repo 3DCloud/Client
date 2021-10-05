@@ -14,7 +14,7 @@ namespace Print3DCloud.Client.Printers.Marlin
     internal class SerialCommandManager : IDisposable
     {
         private const string CommandAcknowledgedMessage = "ok";
-        private const string UnknownCommandMessage = "echo:Unknown Command:";
+        private const string UnknownCommandMessage = "echo:Unknown command:";
         private const string PrinterAliveMessage = "start";
         private const string SetLineNumberCommandFormat = "M110 N{0}";
         private const char LineCommentCharacter = ';';
@@ -25,14 +25,16 @@ namespace Print3DCloud.Client.Printers.Marlin
         private readonly StreamReader streamReader;
         private readonly StreamWriter streamWriter;
 
-        private readonly AutoResetEvent sendCommandResetEvent = new(true);
-        private readonly AutoResetEvent commandAcknowledgedResetEvent = new(true);
+        private readonly SemaphoreSlim writerSemaphore = new(1);
+        private readonly SemaphoreSlim readerSemaphore = new(1);
 
-        private long currentLineNumber;
-        private long resendLine;
+        private readonly AutoResetEvent sendCommandResetEvent = new(true);
+        private readonly AutoResetEvent commandAcknowledgedResetEvent = new(false);
+
+        private int currentLineNumber;
+        private int resendLine;
 
         private bool connected;
-        private bool disposed;
 
         /// <summary>
         /// Initializes a new instance of the <see cref="SerialCommandManager"/> class.
@@ -64,11 +66,6 @@ namespace Print3DCloud.Client.Printers.Marlin
         /// <exception cref="ObjectDisposedException">Thrown if this object has been disposed.</exception>
         public async Task WaitForStartupAsync(CancellationToken cancellationToken)
         {
-            if (this.disposed)
-            {
-                throw new ObjectDisposedException(nameof(SerialCommandManager));
-            }
-
             string? line = null;
 
             while (line == null || !line.EndsWith(PrinterAliveMessage))
@@ -77,7 +74,7 @@ namespace Print3DCloud.Client.Printers.Marlin
                 line = await this.ReadLineAsync(cancellationToken).ConfigureAwait(false);
             }
 
-            await this.WriteLineAsync(string.Format(SetLineNumberCommandFormat, 0)).ConfigureAwait(false);
+            await this.WriteLineAsync(string.Format(SetLineNumberCommandFormat, 0), cancellationToken).ConfigureAwait(false);
 
             while (line != CommandAcknowledgedMessage)
             {
@@ -105,11 +102,6 @@ namespace Print3DCloud.Client.Printers.Marlin
                 throw new InvalidOperationException("Startup did not complete");
             }
 
-            if (this.disposed)
-            {
-                throw new ObjectDisposedException(nameof(SerialCommandManager));
-            }
-
             if (string.IsNullOrWhiteSpace(command))
             {
                 return;
@@ -127,10 +119,10 @@ namespace Print3DCloud.Client.Printers.Marlin
             try
             {
                 // reset current line number if necessary
-                if (this.currentLineNumber <= 0 || this.currentLineNumber == long.MaxValue)
+                if (this.currentLineNumber == int.MaxValue)
                 {
                     // we don't allow cancelling since not waiting for acknowledgement can make us enter a broken state
-                    await this.WaitAndSendAsync(string.Format(SetLineNumberCommandFormat, 0), CancellationToken.None).ConfigureAwait(false);
+                    await this.SendAndWaitForAcknowledgementAsync(string.Format(SetLineNumberCommandFormat, 0), CancellationToken.None).ConfigureAwait(false);
 
                     this.currentLineNumber = 1;
                 }
@@ -146,7 +138,7 @@ namespace Print3DCloud.Client.Printers.Marlin
                 }
 
                 command = CommentRegex.Replace(command, string.Empty).Trim();
-                string line = $"N{this.currentLineNumber} {command} N{this.currentLineNumber}";
+                string line = $"{command} N{this.currentLineNumber}";
                 line += "*" + GetCommandChecksum(line, this.streamWriter.Encoding);
 
                 this.resendLine = this.currentLineNumber;
@@ -162,7 +154,7 @@ namespace Print3DCloud.Client.Printers.Marlin
 
                     this.resendLine = 0;
 
-                    await this.WaitAndSendAsync(line, cancellationToken).ConfigureAwait(false);
+                    await this.SendAndWaitForAcknowledgementAsync(line, cancellationToken).ConfigureAwait(false);
                 }
 
                 this.currentLineNumber++;
@@ -187,14 +179,13 @@ namespace Print3DCloud.Client.Printers.Marlin
                 throw new InvalidOperationException("Startup did not complete");
             }
 
-            if (this.disposed)
-            {
-                throw new ObjectDisposedException(nameof(SerialCommandManager));
-            }
-
             string? line = await this.ReadLineAsync(cancellationToken);
 
-            if (line.StartsWith("Error:"))
+            if (line == PrinterAliveMessage)
+            {
+                throw new PrinterHaltedException("Printer restarted unexpectedly");
+            }
+            else if (line.StartsWith("Error:"))
             {
                 string errorMessage = line[6..];
 
@@ -203,7 +194,7 @@ namespace Print3DCloud.Client.Printers.Marlin
                     throw new PrinterHaltedException(errorMessage);
                 }
 
-                return new MarlinMessage(line, MarlinMessageType.FatalError);
+                return new MarlinMessage(line, MarlinMessageType.Error);
             }
             else if (line.StartsWith("Resend:"))
             {
@@ -213,7 +204,7 @@ namespace Print3DCloud.Client.Printers.Marlin
             }
             else if (line.StartsWith(UnknownCommandMessage))
             {
-                this.logger.LogWarning("Printer restarted unexpectedly");
+                this.logger.LogWarning(line);
                 return new MarlinMessage(line, MarlinMessageType.UnknownCommand);
             }
             else if (line.StartsWith(CommandAcknowledgedMessage))
@@ -240,13 +231,16 @@ namespace Print3DCloud.Client.Printers.Marlin
         {
             if (disposing)
             {
+                this.readerSemaphore.Wait();
+                this.writerSemaphore.Wait();
+
                 this.streamWriter.Dispose();
                 this.streamReader.Dispose();
                 this.sendCommandResetEvent.Dispose();
                 this.commandAcknowledgedResetEvent.Dispose();
+                this.readerSemaphore.Dispose();
+                this.writerSemaphore.Dispose();
             }
-
-            this.disposed = true;
         }
 
         /// <summary>
@@ -269,28 +263,25 @@ namespace Print3DCloud.Client.Printers.Marlin
             return checksum;
         }
 
-        private async Task WaitAndSendAsync(string command, CancellationToken cancellationToken)
+        private async Task SendAndWaitForAcknowledgementAsync(string command, CancellationToken cancellationToken)
         {
-            // since a call to ReceiveLineAsync is necessary for a command acknowledgement
-            // to be processed, we don't want to send a command and wait for the acknowledgement
-            // to come since that would force the use of two threads at all times
-            // instead, we wait for the previous command to be acknowledged before sending the next one
+            await this.WriteLineAsync(command, cancellationToken);
             await this.commandAcknowledgedResetEvent.WaitOneAsync(cancellationToken);
-            await this.WriteLineAsync(command);
         }
 
-        private async Task WriteLineAsync(string line)
+        private async Task WriteLineAsync(string line, CancellationToken cancellationToken)
         {
             this.logger.LogTrace($"Sending: {line}");
+
+            await this.writerSemaphore.WaitAsync(cancellationToken);
 
             try
             {
                 await this.streamWriter.WriteLineAsync(line);
             }
-            catch (ObjectDisposedException)
+            finally
             {
-                this.Dispose();
-                throw;
+                this.writerSemaphore.Release();
             }
         }
 
@@ -302,14 +293,15 @@ namespace Print3DCloud.Client.Printers.Marlin
             {
                 cancellationToken.ThrowIfCancellationRequested();
 
+                await this.readerSemaphore.WaitAsync(cancellationToken);
+
                 try
                 {
                     line = await this.streamReader.ReadLineAsync();
                 }
-                catch (ObjectDisposedException)
+                finally
                 {
-                    this.Dispose();
-                    throw;
+                    this.readerSemaphore.Release();
                 }
             }
 

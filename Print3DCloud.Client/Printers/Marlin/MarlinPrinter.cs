@@ -303,7 +303,7 @@ namespace Print3DCloud.Client.Printers.Marlin
                     continue;
                 }
 
-                this.HandleLine(line.Message);
+                this.HandleLine(line.Content);
             }
         }
 

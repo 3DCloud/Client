@@ -1,7 +1,9 @@
 ﻿using System;
 using System.Collections.Generic;
 using System.IO;
+using System.Linq;
 using System.Text;
+using System.Text.RegularExpressions;
 
 namespace Print3DCloud.Client.Tests
 {
@@ -10,21 +12,14 @@ namespace Print3DCloud.Client.Tests
     /// </summary>
     internal class SerialPrinterStreamSimulator : Stream
     {
-        private readonly Dictionary<string, string> responses = new();
+        private readonly MemoryStream inputStream = new();
+        private readonly MemoryStream outputStream = new();
+
+        private readonly List<ResponseMatch> responses = new();
         private readonly Decoder decoder = Encoding.ASCII.GetDecoder();
         private readonly char[] chars = new char[1024];
 
         private StringBuilder stringBuilder = new();
-
-        /// <summary>
-        /// Gets the stream from which data is read.
-        /// </summary>
-        public MemoryStream InputStream { get; } = new MemoryStream();
-
-        /// <summary>
-        /// Gets the stream to which data is written.
-        /// </summary>
-        public MemoryStream OutputStream { get; } = new MemoryStream();
 
         /// <summary>
         /// Gets the encoding to use while communicating.
@@ -41,13 +36,13 @@ namespace Print3DCloud.Client.Tests
         public override bool CanWrite => true;
 
         /// <inheritdoc/>
-        public override long Length => this.InputStream.Length;
+        public override long Length => this.inputStream.Length;
 
         /// <inheritdoc/>
         public override long Position
         {
-            get => this.InputStream.Position;
-            set => this.InputStream.Position = value;
+            get => this.inputStream.Position;
+            set => this.inputStream.Position = value;
         }
 
         /// <summary>
@@ -56,9 +51,12 @@ namespace Print3DCloud.Client.Tests
         /// <param name="message">Message the printer sends.</param>
         public void SendMessage(string message)
         {
-            byte[] data = this.Encoding.GetBytes(message + '\n');
-            this.InputStream.Write(data);
-            this.InputStream.Seek(-data.Length, SeekOrigin.Current);
+            lock (this.inputStream)
+            {
+                byte[] data = this.Encoding.GetBytes(message + '\n');
+                this.inputStream.Write(data);
+                this.inputStream.Seek(-data.Length, SeekOrigin.Current);
+            }
         }
 
         /// <summary>
@@ -66,22 +64,36 @@ namespace Print3DCloud.Client.Tests
         /// </summary>
         /// <param name="receivedMessage">Message that triggers the response.</param>
         /// <param name="responseMessage">Message to send when <paramref name="receivedMessage"/> is received.</param>
-        public void RespondTo(string receivedMessage, string responseMessage)
+        /// <param name="times">The number of messages to which the <paramref name="responseMessage"/> will be sent.</param>
+        public void RegisterResponse(string receivedMessage, string responseMessage, int times = -1)
         {
-            this.responses.Add(receivedMessage, responseMessage);
+            // this doesn't need exceptional performance since it's only used for tests
+            this.responses.Add(new ResponseMatch(new Regex(Regex.Escape(receivedMessage)), responseMessage, times));
+        }
+
+        /// <summary>
+        /// Registers a response to be sent when a message matching <paramref name="regex"/> is received.
+        /// </summary>
+        /// <param name="regex">Message that triggers the response.</param>
+        /// <param name="responseMessage">Message to send when a message matching <paramref name="regex"/> is received.</param>
+        /// <param name="times">The number of messages to which the <paramref name="responseMessage"/> will be sent.</param>
+        public void RegisterResponse(Regex regex, string responseMessage, int times = -1)
+        {
+            this.responses.Add(new ResponseMatch(regex, responseMessage, times));
         }
 
         /// <inheritdoc/>
         public override void Flush()
         {
-            this.InputStream.Flush();
-            this.OutputStream.Flush();
         }
 
         /// <inheritdoc/>
         public override int Read(byte[] buffer, int offset, int count)
         {
-            return this.InputStream.Read(buffer, offset, count);
+            lock (this.inputStream)
+            {
+                return this.inputStream.Read(buffer, offset, count);
+            }
         }
 
         /// <inheritdoc/>
@@ -99,33 +111,42 @@ namespace Print3DCloud.Client.Tests
         /// <inheritdoc/>
         public override void Write(byte[] buffer, int offset, int count)
         {
-            this.OutputStream.Write(buffer, offset, count);
-
-            int charCount = this.decoder.GetChars(buffer, offset, count, this.chars, 0, false);
-
-            for (int i = 0; i < charCount; i++)
+            lock (this.outputStream)
             {
-                char c = this.chars[i];
+                this.outputStream.Write(buffer, offset, count);
 
-                if (c == '\n')
+                int charCount = this.decoder.GetChars(buffer, offset, count, this.chars, 0, false);
+
+                for (int i = 0; i < charCount; i++)
                 {
-                    string str = this.stringBuilder.ToString();
-                    this.stringBuilder = new StringBuilder();
+                    char c = this.chars[i];
 
-                    if (this.responses.TryGetValue(str, out string? value))
+                    if (c == '\n')
                     {
-                        long prevPosition = this.InputStream.Position;
-                        this.InputStream.Position = this.InputStream.Length;
+                        string str = this.stringBuilder.ToString();
+                        this.stringBuilder = new StringBuilder();
+                        ResponseMatch? responseMatch = this.responses.FirstOrDefault(t => t.Times != 0 && t.Regex.IsMatch(str));
 
-                        this.InputStream.Write(this.Encoding.GetBytes(value + '\n'));
-                        this.InputStream.Flush();
+                        if (responseMatch != null)
+                        {
+                            lock (this.inputStream)
+                            {
+                                long prevPosition = this.inputStream.Position;
+                                this.inputStream.Position = this.inputStream.Length;
 
-                        this.InputStream.Position = prevPosition;
+                                string line = responseMatch.Regex.Replace(str, responseMatch.Response) + '\n';
+                                this.inputStream.Write(this.Encoding.GetBytes(line));
+
+                                this.inputStream.Position = prevPosition;
+
+                                --responseMatch.Times;
+                            }
+                        }
                     }
-                }
-                else
-                {
-                    this.stringBuilder.Append(c);
+                    else
+                    {
+                        this.stringBuilder.Append(c);
+                    }
                 }
             }
         }
@@ -136,14 +157,39 @@ namespace Print3DCloud.Client.Tests
         /// <returns>The lines written to the printer.</returns>
         public string[] GetWrittenLines()
         {
-            return this.Encoding.GetString(this.OutputStream.ToArray()).Split('\n', StringSplitOptions.RemoveEmptyEntries);
+            byte[] data = this.outputStream.ToArray();
+
+            // Encoding.GetString returns an empty string
+            // for an empty array but we don't want that
+            if (data.Length == 0)
+            {
+                return Array.Empty<string>();
+            }
+
+            string str = this.Encoding.GetString(data);
+
+            // trim last newline if necessary; we don't want to trim all newlines
+            // since that would indicate something is sending empty messages
+            if (str.EndsWith('\n'))
+            {
+                str = str[..^1];
+            }
+
+            return str.Split('\n');
         }
 
         /// <inheritdoc/>
         public override void Close()
         {
-            this.InputStream.Close();
-            this.OutputStream.Close();
+            lock (this.inputStream)
+            {
+                this.inputStream.Close();
+            }
+
+            lock (this.outputStream)
+            {
+                this.outputStream.Close();
+            }
         }
 
         /// <inheritdoc/>
@@ -151,9 +197,32 @@ namespace Print3DCloud.Client.Tests
         {
             if (disposing)
             {
-                this.InputStream.Dispose();
-                this.OutputStream.Dispose();
+                lock (this.inputStream)
+                {
+                    this.inputStream.Dispose();
+                }
+
+                lock (this.outputStream)
+                {
+                    this.outputStream.Dispose();
+                }
             }
+        }
+
+        private record ResponseMatch
+        {
+            public ResponseMatch(Regex regex, string response, int times)
+            {
+                this.Regex = regex;
+                this.Response = response;
+                this.Times = times;
+            }
+
+            public Regex Regex { get; }
+
+            public string Response { get; }
+
+            public int Times { get; set; }
         }
     }
 }

@@ -1,10 +1,13 @@
 using System;
 using System.IO;
+using System.Reflection;
 using System.Text;
+using System.Text.RegularExpressions;
 using System.Threading;
 using System.Threading.Tasks;
 using Microsoft.Extensions.Logging;
 using Moq;
+using Print3DCloud.Client.Printers;
 using Print3DCloud.Client.Printers.Marlin;
 using Xunit;
 
@@ -85,10 +88,10 @@ namespace Print3DCloud.Client.Tests.Printers.Marlin
         {
             using SerialPrinterStreamSimulator sim = new();
 
-            sim.RespondTo("M110 N0", "ok");
+            sim.RegisterResponse("M110 N0", "ok");
 
             SerialCommandManager serialCommandManager = CreateSerialCommandManager(sim);
-            Task t = serialCommandManager.WaitForStartupAsync(new CancellationTokenSource(500).Token);
+            Task t = serialCommandManager.WaitForStartupAsync(GetTimeOutToken());
 
             sim.SendMessage("start");
 
@@ -102,10 +105,10 @@ namespace Print3DCloud.Client.Tests.Printers.Marlin
         {
             using SerialPrinterStreamSimulator sim = new();
 
-            sim.RespondTo("M110 N0", "ok");
+            sim.RegisterResponse("M110 N0", "ok");
 
             SerialCommandManager serialCommandManager = CreateSerialCommandManager(sim);
-            Task t = serialCommandManager.WaitForStartupAsync(new CancellationTokenSource(500).Token);
+            Task t = serialCommandManager.WaitForStartupAsync(GetTimeOutToken());
 
             await Assert.ThrowsAsync<OperationCanceledException>(async () =>
             {
@@ -121,7 +124,7 @@ namespace Print3DCloud.Client.Tests.Printers.Marlin
             using SerialPrinterStreamSimulator sim = new();
 
             SerialCommandManager serialCommandManager = CreateSerialCommandManager(sim);
-            Task t = serialCommandManager.WaitForStartupAsync(new CancellationTokenSource(500).Token);
+            Task t = serialCommandManager.WaitForStartupAsync(GetTimeOutToken());
 
             sim.SendMessage("start");
 
@@ -132,6 +135,280 @@ namespace Print3DCloud.Client.Tests.Printers.Marlin
 
             Assert.Equal(new[] { "M110 N0" }, sim.GetWrittenLines());
         }
+
+        [Fact]
+        public async Task SendCommandAsync_WithValidCommand_SendsCommand()
+        {
+            using SerialPrinterStreamSimulator sim = new();
+
+            sim.RegisterResponse(new Regex(@"M104 S210 N\d+\*\d+"), "ok");
+
+            SerialCommandManager serialCommandManager = await SetUpConnectedPrinter(sim);
+
+            Task commandTask = serialCommandManager.SendCommandAsync("M104 S210", GetTimeOutToken());
+            await serialCommandManager.ReceiveLineAsync(GetTimeOutToken());
+            await commandTask;
+
+            Assert.Equal(new[] { "M110 N0", "M104 S210 N1*103" }, sim.GetWrittenLines());
+        }
+
+        [Fact]
+        public async Task SendCommandAsync_WithCommandContainingNewLines_SendsOnlyFirstLine()
+        {
+            using SerialPrinterStreamSimulator sim = new();
+
+            sim.RegisterResponse(new Regex(@"M104 S210 N\d+\*\d+"), "ok");
+
+            SerialCommandManager serialCommandManager = await SetUpConnectedPrinter(sim);
+
+            Task commandTask = serialCommandManager.SendCommandAsync("M104 S210\nM109 S60", GetTimeOutToken());
+            await serialCommandManager.ReceiveLineAsync(GetTimeOutToken());
+            await commandTask;
+
+            Assert.Equal(new[] { "M110 N0", "M104 S210 N1*103" }, sim.GetWrittenLines());
+        }
+
+        [Fact]
+        public async Task SendCommandAsync_WithValidCommands_IncrementsLineNumber()
+        {
+            using SerialPrinterStreamSimulator sim = new();
+
+            sim.RegisterResponse(new Regex(@"M104 S210 N\d+\*\d+"), "ok");
+            sim.RegisterResponse(new Regex(@"M109 S60 N\d+\*\d+"), "ok");
+
+            SerialCommandManager serialCommandManager = await SetUpConnectedPrinter(sim);
+
+            Task commandTask = serialCommandManager.SendCommandAsync("M104 S210", GetTimeOutToken());
+            await serialCommandManager.ReceiveLineAsync(GetTimeOutToken());
+            await commandTask;
+
+            commandTask = serialCommandManager.SendCommandAsync("M109 S60", GetTimeOutToken());
+            await serialCommandManager.ReceiveLineAsync(GetTimeOutToken());
+            await commandTask;
+
+            Assert.Equal(new[] { "M110 N0", "M104 S210 N1*103", "M109 S60 N2*92" }, sim.GetWrittenLines());
+        }
+
+        [Fact]
+        public async Task SendCommandAsync_WhenLineNumberLimitReached_ResetsLineNumber()
+        {
+            using SerialPrinterStreamSimulator sim = new();
+
+            sim.RegisterResponse(new Regex(@"M104 S210 N\d+\*\d+"), "ok");
+            sim.RegisterResponse(new Regex(@"M109 S60 N\d+\*\d+"), "ok");
+
+            SerialCommandManager serialCommandManager = await SetUpConnectedPrinter(sim);
+
+            // this is not good practice, but sending int.MaxValue messages isn't great either
+            typeof(SerialCommandManager).GetField("currentLineNumber", BindingFlags.NonPublic | BindingFlags.Instance)!.SetValue(serialCommandManager, int.MaxValue - 1);
+
+            Task commandTask = serialCommandManager.SendCommandAsync("M104 S210", GetTimeOutToken());
+            await serialCommandManager.ReceiveLineAsync(GetTimeOutToken());
+            await commandTask;
+
+            commandTask = serialCommandManager.SendCommandAsync("M109 S60", GetTimeOutToken());
+            await serialCommandManager.ReceiveLineAsync(GetTimeOutToken());
+            await serialCommandManager.ReceiveLineAsync(GetTimeOutToken());
+            await commandTask;
+
+            Assert.Equal(new[] { "M110 N0", "M104 S210 N2147483646*93", "M110 N0", "M109 S60 N1*95" }, sim.GetWrittenLines());
+        }
+
+        [Fact]
+        public async Task SendCommandAsync_WhenResendRequested_ResendsLine()
+        {
+            using SerialPrinterStreamSimulator sim = new();
+
+            sim.RegisterResponse(new Regex(@"M104 S210 N(\d+)\*\d+"), "Error:checksum mismatch, Last Line: 0\nResend: $1\nok", 1);
+            sim.RegisterResponse(new Regex(@"M104 S210 N\d+\*\d+"), "ok", 1);
+
+            SerialCommandManager serialCommandManager = await SetUpConnectedPrinter(sim);
+
+            Task commandTask = serialCommandManager.SendCommandAsync("M104 S210", GetTimeOutToken());
+
+            // first response
+            MarlinMessage message = await serialCommandManager.ReceiveLineAsync(GetTimeOutToken());
+            Assert.Equal("Error:checksum mismatch, Last Line: 0", message.Content);
+            Assert.Equal(MarlinMessageType.Error, message.Type);
+
+            message = await serialCommandManager.ReceiveLineAsync(GetTimeOutToken());
+            Assert.Equal("Resend: 1", message.Content);
+            Assert.Equal(MarlinMessageType.ResendLine, message.Type);
+
+            message = await serialCommandManager.ReceiveLineAsync(GetTimeOutToken());
+            Assert.Equal("ok", message.Content);
+            Assert.Equal(MarlinMessageType.CommandAcknowledgement, message.Type);
+
+            // second response
+            message = await serialCommandManager.ReceiveLineAsync(GetTimeOutToken());
+            Assert.Equal("ok", message.Content);
+            Assert.Equal(MarlinMessageType.CommandAcknowledgement, message.Type);
+
+            await commandTask;
+        }
+
+        [Fact]
+        public async Task SendCommandAsync_WhenResendRequestedWithUnexpectedLineNumber_ThrowsException()
+        {
+            using SerialPrinterStreamSimulator sim = new();
+
+            sim.RegisterResponse(new Regex(@"M104 S210 N(\d+)\*\d+"), "Error:checksum mismatch, Last Line: 0\nResend: 5\nok", 1);
+            sim.RegisterResponse(new Regex(@"M104 S210 N\d+\*\d+"), "ok", 1);
+
+            SerialCommandManager serialCommandManager = await SetUpConnectedPrinter(sim);
+
+            Task commandTask = serialCommandManager.SendCommandAsync("M104 S210", GetTimeOutToken());
+
+            // first response
+            MarlinMessage message = await serialCommandManager.ReceiveLineAsync(GetTimeOutToken());
+            Assert.Equal("Error:checksum mismatch, Last Line: 0", message.Content);
+            Assert.Equal(MarlinMessageType.Error, message.Type);
+
+            message = await serialCommandManager.ReceiveLineAsync(GetTimeOutToken());
+            Assert.Equal("Resend: 5", message.Content);
+            Assert.Equal(MarlinMessageType.ResendLine, message.Type);
+
+            message = await serialCommandManager.ReceiveLineAsync(GetTimeOutToken());
+            Assert.Equal("ok", message.Content);
+            Assert.Equal(MarlinMessageType.CommandAcknowledgement, message.Type);
+
+            await Assert.ThrowsAsync<InvalidOperationException>(async () =>
+            {
+                await commandTask;
+            });
+        }
+
+        [Fact]
+        public async Task SendCommandAsync_WhenNotConnected_ThrowsException()
+        {
+            using SerialPrinterStreamSimulator sim = new();
+
+            sim.RegisterResponse("M110 N0", "ok");
+
+            SerialCommandManager serialCommandManager = CreateSerialCommandManager(sim);
+
+            Exception exception = await Assert.ThrowsAsync<InvalidOperationException>(async () =>
+            {
+                await serialCommandManager.SendCommandAsync("blah", GetTimeOutToken());
+            });
+
+            Assert.Equal("Startup did not complete", exception.Message);
+            Assert.Equal(Array.Empty<string>(), sim.GetWrittenLines());
+        }
+
+        [Fact]
+        public async Task SendCommandAsync_WhenCommandIsEmpty_DoesNothing()
+        {
+            using SerialPrinterStreamSimulator sim = new();
+            SerialCommandManager serialCommandManager = await SetUpConnectedPrinter(sim);
+
+            await serialCommandManager.SendCommandAsync(" ", GetTimeOutToken());
+
+            Assert.Equal(new[] { "M110 N0" }, sim.GetWrittenLines());
+        }
+
+        [Fact]
+        public async Task SendCommandAsync_WhenCommandIsFullLineComment_DoesNothing()
+        {
+            using SerialPrinterStreamSimulator sim = new();
+            SerialCommandManager serialCommandManager = await SetUpConnectedPrinter(sim);
+
+            await serialCommandManager.SendCommandAsync(" ; this is a comment with no command beforehand", GetTimeOutToken());
+            
+            Assert.Equal(new[] { "M110 N0" }, sim.GetWrittenLines());
+        }
+
+        [Fact]
+        public async Task ReceiveLineAsync_WhenNotConnected_ThrowsException()
+        {
+            using SerialPrinterStreamSimulator sim = new();
+            SerialCommandManager serialCommandManager = CreateSerialCommandManager(sim);
+
+            sim.SendMessage("start");
+
+            Exception exception = await Assert.ThrowsAsync<InvalidOperationException>(async () =>
+            {
+                await serialCommandManager.ReceiveLineAsync(GetTimeOutToken());
+            });
+
+            Assert.Equal("Startup did not complete", exception.Message);
+        }
+
+        [Fact]
+        public async Task ReceiveLineAsync_WhenUnknownCommandReceived_IdentifiesUnknownCommand()
+        {
+            using SerialPrinterStreamSimulator sim = new();
+            SerialCommandManager serialCommandManager = await SetUpConnectedPrinter(sim);
+
+            sim.SendMessage("echo:Unknown command: \"M12345 S3568901\"\nok");
+
+            MarlinMessage message = await serialCommandManager.ReceiveLineAsync(GetTimeOutToken());
+            await serialCommandManager.ReceiveLineAsync(GetTimeOutToken());
+
+            Assert.Equal("echo:Unknown command: \"M12345 S3568901\"", message.Content);
+            Assert.Equal(MarlinMessageType.UnknownCommand, message.Type);
+        }
+
+        [Fact]
+        public async Task ReceiveLineAsync_WhenStandardMessageReceived_ReturnsAsSimpleMessage()
+        {
+            using SerialPrinterStreamSimulator sim = new();
+            SerialCommandManager serialCommandManager = await SetUpConnectedPrinter(sim);
+
+            string content = "T:210.00 /210.00 B:26.19 /0.00 T0:210.00 /210.00 T1:64.45 /0.00 @:39 B@:0 @0:39 @1:0";
+            sim.SendMessage(content);
+
+            MarlinMessage message = await serialCommandManager.ReceiveLineAsync(GetTimeOutToken());
+
+            Assert.Equal(content, message.Content);
+            Assert.Equal(MarlinMessageType.Message, message.Type);
+        }
+
+        [Fact]
+        public async Task ReceiveLineAsync_WhenFatalErrorReceived_ThrowsException()
+        {
+            using SerialPrinterStreamSimulator sim = new();
+            SerialCommandManager serialCommandManager = await SetUpConnectedPrinter(sim);
+
+            sim.SendMessage("Error:Printer halted. kill() called!");
+
+            await Assert.ThrowsAsync<PrinterHaltedException>(async () =>
+            {
+                await serialCommandManager.ReceiveLineAsync(GetTimeOutToken());
+            });
+        }
+
+        [Fact]
+        public async Task ReceiveLineAsync_WhenPrinterRestarts_ThrowsException()
+        {
+            using SerialPrinterStreamSimulator sim = new();
+            SerialCommandManager serialCommandManager = await SetUpConnectedPrinter(sim);
+
+            sim.SendMessage("start");
+
+            await Assert.ThrowsAsync<PrinterHaltedException>(async () =>
+            {
+                await serialCommandManager.ReceiveLineAsync(GetTimeOutToken());
+            });
+        }
+
+        [Fact]
+        public async Task Dispose_WhenCalledWhileSendingCommand_WaitsAndCompletesSuccessfully()
+        {
+            using SerialPrinterStreamSimulator sim = new();
+            SerialCommandManager serialCommandManager = await SetUpConnectedPrinter(sim);
+
+            Task task = serialCommandManager.SendCommandAsync("blah", GetTimeOutToken());
+
+            serialCommandManager.Dispose();
+
+            await Assert.ThrowsAsync<ObjectDisposedException>(async () =>
+            {
+                await task;
+            });
+        }
+
+        private static CancellationToken GetTimeOutToken() => new CancellationTokenSource(50).Token;
 
         private static SerialCommandManager CreateSerialCommandManager(Stream? stream = null, ILogger<MarlinPrinter>? logger = null)
         {
@@ -149,6 +426,18 @@ namespace Print3DCloud.Client.Tests.Printers.Marlin
             }
 
             return new SerialCommandManager(logger, stream, Encoding.ASCII, "\n");
+        }
+
+        private static async Task<SerialCommandManager> SetUpConnectedPrinter(SerialPrinterStreamSimulator sim)
+        {
+            SerialCommandManager serialCommandManager = CreateSerialCommandManager(sim);
+
+            sim.SendMessage("start");
+            sim.RegisterResponse("M110 N0", "ok");
+
+            await serialCommandManager.WaitForStartupAsync(GetTimeOutToken());
+
+            return serialCommandManager;
         }
     }
 }

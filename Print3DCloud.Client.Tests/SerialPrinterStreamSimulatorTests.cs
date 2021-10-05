@@ -1,5 +1,6 @@
 ﻿using System.IO;
 using System.Text;
+using System.Text.RegularExpressions;
 using Xunit;
 
 namespace Print3DCloud.Client.Tests
@@ -16,55 +17,102 @@ namespace Print3DCloud.Client.Tests
             using StreamReader reader = GetStreamReader(sim);
 
             Assert.Equal(0, sim.Position);
-            Assert.False(reader.EndOfStream);
             Assert.Equal("start", reader.ReadLine());
+            Assert.True(reader.EndOfStream);
         }
 
         [Fact]
         public void RespondTo_WithMessageSentAlone_Responds()
         {
             using SerialPrinterStreamSimulator sim = new();
-            using StreamWriter writer = GetStreamWriter(sim);
 
-            sim.RespondTo("M155", "ok");
-            writer.WriteLine("M155");
+            sim.RegisterResponse("M155", "ok");
+
+            using (StreamWriter writer = GetStreamWriter(sim))
+            {
+                writer.WriteLine("M155");
+            }
 
             using StreamReader reader = GetStreamReader(sim);
 
-            Assert.False(reader.EndOfStream);
             Assert.Equal("ok", reader.ReadLine());
+            Assert.True(reader.EndOfStream);
         }
 
         [Fact]
         public void RespondTo_WithMessageSentInParts_Responds()
         {
             using SerialPrinterStreamSimulator sim = new();
-            using StreamWriter writer = GetStreamWriter(sim);
 
-            sim.RespondTo("M155", "ok");
+            sim.RegisterResponse("M155", "ok");
 
-            writer.Write("M1");
-            writer.Write("55\n");
+            using (StreamWriter writer = GetStreamWriter(sim))
+            {
+                writer.Write("M1");
+                writer.Write("55\n");
+            }
 
             using StreamReader reader = GetStreamReader(sim);
 
-            Assert.False(reader.EndOfStream);
             Assert.Equal("ok", reader.ReadLine());
+            Assert.True(reader.EndOfStream);
         }
 
         [Fact]
         public void RespondTo_WithMessageSentWithOtherMessages_Responds()
         {
             using SerialPrinterStreamSimulator sim = new();
-            using StreamWriter writer = GetStreamWriter(sim);
 
-            sim.RespondTo("M155", "ok");
-            writer.WriteLine("G0 X0 Y5 Z10\nM155\nM140 S210");
+            sim.RegisterResponse("M155", "ok");
+
+            using (StreamWriter writer = GetStreamWriter(sim))
+            {
+                writer.WriteLine("G0 X0 Y5 Z10\nM155\nM140 S210");
+            }
 
             using StreamReader reader = GetStreamReader(sim);
 
-            Assert.False(reader.EndOfStream);
             Assert.Equal("ok", reader.ReadLine());
+            Assert.True(reader.EndOfStream);
+        }
+
+        [Fact]
+        public void RespondTo_WithResponsesThatHaveTimes_RespondsInOrder()
+        {
+            using SerialPrinterStreamSimulator sim = new();
+
+            sim.RegisterResponse("M155", "ok", 1);
+            sim.RegisterResponse("M155", "no", 1);
+
+            using (StreamWriter writer = GetStreamWriter(sim))
+            {
+                writer.WriteLine("M155");
+                writer.WriteLine("M155");
+            }
+
+            using StreamReader reader = GetStreamReader(sim);
+
+            Assert.Equal("ok", reader.ReadLine());
+            Assert.Equal("no", reader.ReadLine());
+            Assert.True(reader.EndOfStream);
+        }
+
+        [Fact]
+        public void RespondTo_WithResponseThatHasSubstitutions_FillsThemIn()
+        {
+            using SerialPrinterStreamSimulator sim = new();
+
+            sim.RegisterResponse(new Regex(@"M155 (\d+)"), "ok $1", 1);
+
+            using (StreamWriter writer = GetStreamWriter(sim))
+            {
+                writer.WriteLine("M155 1234");
+            }
+
+            using StreamReader reader = GetStreamReader(sim);
+
+            Assert.Equal("ok 1234", reader.ReadLine());
+            Assert.True(reader.EndOfStream);
         }
 
         private static StreamWriter GetStreamWriter(SerialPrinterStreamSimulator sim)

@@ -1,4 +1,4 @@
 ﻿namespace Print3DCloud.Client.Printers.Marlin
 {
-    internal record MarlinMessage(string Message, MarlinMessageType Type);
+    internal record MarlinMessage(string Content, MarlinMessageType Type);
 }

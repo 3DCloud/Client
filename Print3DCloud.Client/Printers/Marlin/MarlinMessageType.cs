@@ -33,6 +33,6 @@
         /// <summary>
         /// A fatal error has occurred and the printer has shut down.
         /// </summary>
-        FatalError,
+        Error,
     }
 }
