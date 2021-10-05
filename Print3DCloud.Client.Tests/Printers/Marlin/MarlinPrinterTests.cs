@@ -1,5 +1,4 @@
 ﻿using System;
-using System.IO;
 using System.Text;
 using System.Text.RegularExpressions;
 using System.Threading.Tasks;
@@ -9,39 +8,11 @@ using Print3DCloud.Client.Printers.Marlin;
 using Print3DCloud.Client.Tests.TestUtilities;
 using RJCP.IO.Ports;
 using Xunit;
-using Xunit.Abstractions;
 
 namespace Print3DCloud.Client.Tests.Printers.Marlin
 {
     public class MarlinPrinterTests
     {
-        private class TestOutputWriter : TextWriter
-        {
-            private ITestOutputHelper testOutputHelper;
-
-            public TestOutputWriter(ITestOutputHelper testOutputHelper)
-            {
-                this.testOutputHelper = testOutputHelper;
-            }
-
-            public override Encoding Encoding => Encoding.UTF8;
-
-            public override void WriteLine(string? value)
-            {
-                this.testOutputHelper.WriteLine(value);
-            }
-
-            public override void WriteLine(string format, params object?[] args)
-            {
-                this.testOutputHelper.WriteLine(format, args);
-            }
-        }
-
-        public MarlinPrinterTests(ITestOutputHelper testOutputHelper)
-        {
-            Console.SetOut(new TestOutputWriter(testOutputHelper));
-        }
-
         [Fact]
         public async Task ConnectAsync_WhenPrinterRespondsAsExpected_ConnectsSuccessfully()
         {
