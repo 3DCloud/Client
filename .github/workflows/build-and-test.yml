@@ -37,7 +37,7 @@ jobs:
     - name: Build
       run: dotnet build Print3DCloud.Client/Print3DCloud.Client.csproj --runtime linux-x64
 
-  build-arm64:
+  build-linux-arm64:
     runs-on: ubuntu-latest
 
     steps:
