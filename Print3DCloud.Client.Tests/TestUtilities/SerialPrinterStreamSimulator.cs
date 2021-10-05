@@ -5,12 +5,12 @@ using System.Linq;
 using System.Text;
 using System.Text.RegularExpressions;
 
-namespace Print3DCloud.Client.Tests
+namespace Print3DCloud.Client.Tests.TestUtilities
 {
     /// <summary>
     /// A memory stream that contains separate input and output data.
     /// </summary>
-    internal class SerialPrinterStreamSimulator : Stream
+    public class SerialPrinterStreamSimulator : Stream
     {
         private readonly MemoryStream inputStream = new();
         private readonly MemoryStream outputStream = new();

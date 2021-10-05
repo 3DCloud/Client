@@ -3,7 +3,7 @@ using System.Text;
 using System.Text.RegularExpressions;
 using Xunit;
 
-namespace Print3DCloud.Client.Tests
+namespace Print3DCloud.Client.Tests.TestUtilities
 {
     public class SerialPrinterStreamSimulatorTests
     {

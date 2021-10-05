@@ -16,12 +16,12 @@ namespace Print3DCloud.Client.Printers.Marlin
         private const string CommandAcknowledgedMessage = "ok";
         private const string UnknownCommandMessage = "echo:Unknown command:";
         private const string PrinterAliveMessage = "start";
-        private const string SetLineNumberCommandFormat = "M110 N{0}";
+        private const string SetLineNumberCommand = "N0 M110 N0*125";
         private const char LineCommentCharacter = ';';
 
         private static readonly Regex CommentRegex = new(@"\(.*?\)|;.*$");
 
-        private readonly ILogger<MarlinPrinter> logger;
+        private readonly ILogger logger;
         private readonly StreamReader streamReader;
         private readonly StreamWriter streamWriter;
 
@@ -43,7 +43,7 @@ namespace Print3DCloud.Client.Printers.Marlin
         /// <param name="stream">The <see cref="Stream"/> to use to communicate with the printer.</param>
         /// <param name="encoding">The <see cref="Encoding"/> to use when communicating with the printer.</param>
         /// <param name="newLine">The new line character(s) to use when communicating with the printer.</param>
-        public SerialCommandManager(ILogger<MarlinPrinter> logger, Stream stream, Encoding encoding, string newLine)
+        public SerialCommandManager(ILogger logger, Stream stream, Encoding encoding, string newLine)
         {
             if (stream == null) throw new ArgumentNullException(nameof(stream));
             if (encoding == null) throw new ArgumentNullException(nameof(encoding));
@@ -74,7 +74,7 @@ namespace Print3DCloud.Client.Printers.Marlin
                 line = await this.ReadLineAsync(cancellationToken).ConfigureAwait(false);
             }
 
-            await this.WriteLineAsync(string.Format(SetLineNumberCommandFormat, 0), cancellationToken).ConfigureAwait(false);
+            await this.WriteLineAsync(SetLineNumberCommand, cancellationToken).ConfigureAwait(false);
 
             while (line != CommandAcknowledgedMessage)
             {
@@ -122,7 +122,7 @@ namespace Print3DCloud.Client.Printers.Marlin
                 if (this.currentLineNumber == int.MaxValue)
                 {
                     // we don't allow cancelling since not waiting for acknowledgement can make us enter a broken state
-                    await this.SendAndWaitForAcknowledgementAsync(string.Format(SetLineNumberCommandFormat, 0), CancellationToken.None).ConfigureAwait(false);
+                    await this.SendAndWaitForAcknowledgementAsync(SetLineNumberCommand, CancellationToken.None).ConfigureAwait(false);
 
                     this.currentLineNumber = 1;
                 }
@@ -137,9 +137,7 @@ namespace Print3DCloud.Client.Printers.Marlin
                     this.logger.LogInformation($"Command has multiple lines; only the first one ('{command}') will be sent");
                 }
 
-                command = CommentRegex.Replace(command, string.Empty).Trim();
-                string line = $"{command} N{this.currentLineNumber}";
-                line += "*" + GetCommandChecksum(line, this.streamWriter.Encoding);
+                string line = this.BuildCommand(command);
 
                 this.resendLine = this.currentLineNumber;
 
@@ -243,16 +241,21 @@ namespace Print3DCloud.Client.Printers.Marlin
             }
         }
 
+        private string BuildCommand(string command)
+        {
+            string line = $"N{this.currentLineNumber} {CommentRegex.Replace(command, string.Empty).Trim()}";
+            return line + "*" + this.GetCommandChecksum(line);
+        }
+
         /// <summary>
         /// Calculates a simple checksum for the given command.
         /// Based on Marlin's source code: https://github.com/MarlinFirmware/Marlin/blob/8e1ea6a2fa1b90a58b4257eec9fbc2923adda680/Marlin/src/gcode/queue.cpp#L485.
         /// </summary>
         /// <param name="command">The command for which to generate a checksum.</param>
-        /// <param name="encoding">The encoding to use when converting the command to a byte array.</param>
         /// <returns>The command's checksum.</returns>
-        private static byte GetCommandChecksum(string command, Encoding encoding)
+        private byte GetCommandChecksum(string command)
         {
-            byte[] bytes = encoding.GetBytes(command);
+            byte[] bytes = this.streamWriter.Encoding.GetBytes(command);
             byte checksum = 0;
 
             foreach (byte b in bytes)
