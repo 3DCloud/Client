@@ -314,7 +314,7 @@ namespace Print3DCloud.Client.Tests.Printers.Marlin
             SerialCommandManager serialCommandManager = await SetUpConnectedPrinter(sim);
 
             await serialCommandManager.SendCommandAsync(" ; this is a comment with no command beforehand", GetTimeOutToken());
-            
+
             Assert.Equal(new[] { "M110 N0" }, sim.GetWrittenLines());
         }
 
