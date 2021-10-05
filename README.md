@@ -13,3 +13,17 @@ This solution contains multiple projects.
 If you don't have Visual Studio already, download [Visual Studio 2019 Community](https://visualstudio.microsoft.com/fr/vs/community/). When prompted in the Visual Studio Installer, make sure to select at least "Desktop .NET Development."
 
 You should then be able to open the `Print3DCloud.sln` solution in Visual Studio and simply build and run the project.
+
+### Generating test coverage locally
+The `generate-coverage-report.ps1` PowerShell script can be used to generate an HTML coverage report locally. You must have [ReportGenerator](https://github.com/danielpalme/ReportGenerator) installed as a dotnet CLI tool, which you can do by running the following:
+
+```
+dotnet tool install -g dotnet-reportgenerator-globaltool
+```
+
+Then, from a PowerShell prompt at the root directory of the repository, simply run
+```
+./generate-coverage-report.ps1
+```
+
+An HTML report will be created in a folder called `coverage`.
