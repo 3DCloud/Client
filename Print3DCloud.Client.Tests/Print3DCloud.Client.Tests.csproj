@@ -35,4 +35,8 @@
     <ProjectReference Include="..\Print3DCloud.Client\Print3DCloud.Client.csproj" />
   </ItemGroup>
 
+  <ItemGroup>
+    <None Remove="TestResults/**"/>
+  </ItemGroup>
+
 </Project>

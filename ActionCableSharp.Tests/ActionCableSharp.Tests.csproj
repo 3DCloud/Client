@@ -35,4 +35,8 @@
     <ProjectReference Include="..\ActionCableSharp\ActionCableSharp.csproj" />
   </ItemGroup>
 
+  <ItemGroup>
+    <None Remove="TestResults/**"/>
+  </ItemGroup>
+
 </Project>
