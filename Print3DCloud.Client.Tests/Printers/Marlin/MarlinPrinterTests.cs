@@ -179,7 +179,7 @@ namespace Print3DCloud.Client.Tests.Printers.Marlin
                 "G0 X0 Y0 Z10 ; move to 0,0\n" +
                 "M104 S210\n" +
                 "M140 S60\n",
-                TestHelpers.CreateTimeOutToken());
+                TestHelpers.CreateTimeOutToken(2000));
 
             await Task.Delay(5);
 

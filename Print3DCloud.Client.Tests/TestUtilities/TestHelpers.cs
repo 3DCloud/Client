@@ -14,7 +14,7 @@ namespace Print3DCloud.Client.Tests.TestUtilities
         /// </summary>
         /// <param name="millisecondsDelay">The number of milliseconds after which the token will be canceled.</param>
         /// <returns>A token that gets cancelled after the specified number of milliseconds.</returns>
-        public static CancellationToken CreateTimeOutToken(int millisecondsDelay = 50) => new CancellationTokenSource(millisecondsDelay).Token;
+        public static CancellationToken CreateTimeOutToken(int millisecondsDelay = 1000) => new CancellationTokenSource(millisecondsDelay).Token;
 
         /// <summary>
         /// Create a mock <see cref="ILogger{TCategoryName}"/>.
