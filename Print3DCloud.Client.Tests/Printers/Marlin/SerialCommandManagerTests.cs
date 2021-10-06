@@ -3,7 +3,6 @@ using System.IO;
 using System.Reflection;
 using System.Text;
 using System.Text.RegularExpressions;
-using System.Threading;
 using System.Threading.Tasks;
 using Microsoft.Extensions.Logging;
 using Moq;
@@ -162,7 +161,7 @@ namespace Print3DCloud.Client.Tests.Printers.Marlin
 
             SerialCommandManager serialCommandManager = await SetUpConnectedPrinter(sim);
 
-            Task commandTask = serialCommandManager.SendCommandAsync("M104 S210\nM109 S60", TestHelpers.CreateTimeOutToken());
+            Task commandTask = serialCommandManager.SendCommandAsync("M104 S210\nm140 S60", TestHelpers.CreateTimeOutToken());
             await serialCommandManager.ReceiveLineAsync(TestHelpers.CreateTimeOutToken());
             await commandTask;
 
@@ -175,7 +174,7 @@ namespace Print3DCloud.Client.Tests.Printers.Marlin
             using SerialPrinterStreamSimulator sim = new();
 
             sim.RegisterResponse(new Regex(@"N\d+ M104 S210\*\d+"), "ok");
-            sim.RegisterResponse(new Regex(@"N\d+ M109 S60\*\d+"), "ok");
+            sim.RegisterResponse(new Regex(@"N\d+ M140 S60\*\d+"), "ok");
 
             SerialCommandManager serialCommandManager = await SetUpConnectedPrinter(sim);
 
@@ -183,11 +182,11 @@ namespace Print3DCloud.Client.Tests.Printers.Marlin
             await serialCommandManager.ReceiveLineAsync(TestHelpers.CreateTimeOutToken());
             await commandTask;
 
-            commandTask = serialCommandManager.SendCommandAsync("M109 S60", TestHelpers.CreateTimeOutToken());
+            commandTask = serialCommandManager.SendCommandAsync("M140 S60", TestHelpers.CreateTimeOutToken());
             await serialCommandManager.ReceiveLineAsync(TestHelpers.CreateTimeOutToken());
             await commandTask;
 
-            Assert.Equal(new[] { "N0 M110 N0*125", "N1 M104 S210*103", "N2 M109 S60*92" }, sim.GetWrittenLines());
+            Assert.Equal(new[] { "N0 M110 N0*125", "N1 M104 S210*103", "N2 M140 S60*81" }, sim.GetWrittenLines());
         }
 
         [Fact]
@@ -196,7 +195,7 @@ namespace Print3DCloud.Client.Tests.Printers.Marlin
             using SerialPrinterStreamSimulator sim = new();
 
             sim.RegisterResponse(new Regex(@"N\d+ M104 S210\*\d+"), "ok");
-            sim.RegisterResponse(new Regex(@"N\d+ M109 S60\*\d+"), "ok");
+            sim.RegisterResponse(new Regex(@"N\d+ M140 S60\*\d+"), "ok");
 
             SerialCommandManager serialCommandManager = await SetUpConnectedPrinter(sim);
 
@@ -207,12 +206,12 @@ namespace Print3DCloud.Client.Tests.Printers.Marlin
             await serialCommandManager.ReceiveLineAsync(TestHelpers.CreateTimeOutToken());
             await commandTask;
 
-            commandTask = serialCommandManager.SendCommandAsync("M109 S60", TestHelpers.CreateTimeOutToken());
+            commandTask = serialCommandManager.SendCommandAsync("M140 S60", TestHelpers.CreateTimeOutToken());
             await serialCommandManager.ReceiveLineAsync(TestHelpers.CreateTimeOutToken());
             await serialCommandManager.ReceiveLineAsync(TestHelpers.CreateTimeOutToken());
             await commandTask;
 
-            Assert.Equal(new[] { "N0 M110 N0*125", "N2147483646 M104 S210*93", "N0 M110 N0*125", "N1 M109 S60*95" }, sim.GetWrittenLines());
+            Assert.Equal(new[] { "N0 M110 N0*125", "N2147483646 M104 S210*93", "N0 M110 N0*125", "N1 M140 S60*82" }, sim.GetWrittenLines());
         }
 
         [Fact]
@@ -260,7 +259,6 @@ namespace Print3DCloud.Client.Tests.Printers.Marlin
 
             Task commandTask = serialCommandManager.SendCommandAsync("M104 S210", TestHelpers.CreateTimeOutToken());
 
-            // first response
             MarlinMessage message = await serialCommandManager.ReceiveLineAsync(TestHelpers.CreateTimeOutToken());
             Assert.Equal("Error:checksum mismatch, Last Line: 0", message.Content);
             Assert.Equal(MarlinMessageType.Error, message.Type);
@@ -343,8 +341,10 @@ namespace Print3DCloud.Client.Tests.Printers.Marlin
 
             sim.SendMessage("echo:Unknown command: \"M12345 S3568901\"\nok");
 
+            Task commandTask = serialCommandManager.SendCommandAsync("M12345 S3568901", TestHelpers.CreateTimeOutToken());
             MarlinMessage message = await serialCommandManager.ReceiveLineAsync(TestHelpers.CreateTimeOutToken());
             await serialCommandManager.ReceiveLineAsync(TestHelpers.CreateTimeOutToken());
+            await commandTask;
 
             Assert.Equal("echo:Unknown command: \"M12345 S3568901\"", message.Content);
             Assert.Equal(MarlinMessageType.UnknownCommand, message.Type);
@@ -390,22 +390,6 @@ namespace Print3DCloud.Client.Tests.Printers.Marlin
             await Assert.ThrowsAsync<PrinterHaltedException>(async () =>
             {
                 await serialCommandManager.ReceiveLineAsync(TestHelpers.CreateTimeOutToken());
-            });
-        }
-
-        [Fact]
-        public async Task Dispose_WhenCalledWhileSendingCommand_WaitsAndCompletesSuccessfully()
-        {
-            using SerialPrinterStreamSimulator sim = new();
-            SerialCommandManager serialCommandManager = await SetUpConnectedPrinter(sim);
-
-            Task task = serialCommandManager.SendCommandAsync("blah", TestHelpers.CreateTimeOutToken());
-
-            serialCommandManager.Dispose();
-
-            await Assert.ThrowsAsync<ObjectDisposedException>(async () =>
-            {
-                await task;
             });
         }
 

@@ -99,11 +99,26 @@ namespace Print3DCloud.Client.Printers
 
             this.logger.LogInformation($"Starting print {message.PrintId} from file at '{message.DownloadUrl}'");
 
-            using HttpClient client = new();
-            HttpResponseMessage response = await client.GetAsync(message.DownloadUrl);
+            string directory = Path.Join(Directory.GetCurrentDirectory(), "tmp");
+            Directory.CreateDirectory(directory);
 
-            await using Stream fileContentStream = await response.Content.ReadAsStreamAsync();
-            await this.Printer.StartPrintAsync(fileContentStream, CancellationToken.None);
+            string path = Path.Join(directory, Guid.NewGuid().ToString());
+
+            using (HttpClient client = new())
+            {
+                HttpResponseMessage response = await client.GetAsync(message.DownloadUrl);
+
+                // save to filesystem to reduce memory usage
+                await using (Stream contentStream = await response.Content.ReadAsStreamAsync())
+                await using (FileStream writeFileStream = new(path, FileMode.CreateNew, FileAccess.Write))
+                {
+                    contentStream.CopyTo(writeFileStream);
+                }
+            }
+
+            // we don't use "using" here since the file is kept open for the duration of the print
+            FileStream fileStream = new(path, FileMode.Open, FileAccess.Read);
+            await this.Printer.StartPrintAsync(fileStream, CancellationToken.None).ConfigureAwait(false);
         }
     }
 }

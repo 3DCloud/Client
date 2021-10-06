@@ -158,7 +158,7 @@ namespace Print3DCloud.Client.Printers.Marlin
         }
 
         /// <inheritdoc/>
-        public Task StartPrintAsync(Stream fileStream, CancellationToken cancellationToken)
+        public Task StartPrintAsync(Stream stream, CancellationToken cancellationToken)
         {
             if (this.State != PrinterState.Ready)
             {
@@ -168,7 +168,7 @@ namespace Print3DCloud.Client.Printers.Marlin
             this.State = PrinterState.Printing;
             this.printCancellationTokenSource = new CancellationTokenSource();
 
-            this.printTask = Task.Run(() => this.RunPrintAsync(fileStream, this.printCancellationTokenSource.Token).ContinueWith(t => this.HandleTaskCompletedAsync(t, "Print")), cancellationToken);
+            this.printTask = Task.Run(() => this.RunPrintAsync(stream, this.printCancellationTokenSource.Token).ContinueWith(t => this.HandleTaskCompletedAsync(t, "Print")), cancellationToken);
 
             return Task.CompletedTask;
         }
@@ -262,7 +262,7 @@ namespace Print3DCloud.Client.Printers.Marlin
             {
                 cancellationToken.ThrowIfCancellationRequested();
 
-                line = await serialCommandProcessor.ReceiveLineAsync(cancellationToken).ConfigureAwait(false);
+                line = await serialCommandProcessor.ReceiveLineAsync(cancellationToken);
 
                 if (line.Type == MarlinMessageType.UnknownCommand)
                 {
@@ -271,14 +271,15 @@ namespace Print3DCloud.Client.Printers.Marlin
             }
             while (line.Type != MarlinMessageType.CommandAcknowledgement && !sendCommandTask.IsCompleted);
 
-            await sendCommandTask.ConfigureAwait(false);
+            await sendCommandTask;
 
             return result;
         }
 
-        private async Task RunPrintAsync(Stream fileStream, CancellationToken cancellationToken)
+        private async Task RunPrintAsync(Stream stream, CancellationToken cancellationToken)
         {
-            using var streamReader = new StreamReader(fileStream);
+            // StreamReader takes care of closing the stream properly
+            using var streamReader = new StreamReader(stream);
 
             while (streamReader.Peek() != -1)
             {

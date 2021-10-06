@@ -1,7 +1,6 @@
 ﻿using System;
 using System.IO;
 using System.Text;
-using System.Text.RegularExpressions;
 using System.Threading;
 using System.Threading.Tasks;
 using Microsoft.Extensions.Logging;
@@ -16,20 +15,19 @@ namespace Print3DCloud.Client.Printers.Marlin
         private const string CommandAcknowledgedMessage = "ok";
         private const string UnknownCommandMessage = "echo:Unknown command:";
         private const string PrinterAliveMessage = "start";
-        private const string SetLineNumberCommand = "N0 M110 N0*125";
         private const char LineCommentCharacter = ';';
 
-        private static readonly Regex CommentRegex = new(@"\(.*?\)|;.*$");
+        private static readonly byte[] SetLineNumberCommand = Encoding.ASCII.GetBytes("N0 M110 N0*125\n");
 
         private readonly ILogger logger;
+        private readonly Stream stream;
+        private readonly Encoding encoding;
+        private readonly string newLine;
+
         private readonly StreamReader streamReader;
-        private readonly StreamWriter streamWriter;
 
-        private readonly SemaphoreSlim writerSemaphore = new(1);
-        private readonly SemaphoreSlim readerSemaphore = new(1);
-
-        private readonly AutoResetEvent sendCommandResetEvent = new(true);
-        private readonly AutoResetEvent commandAcknowledgedResetEvent = new(false);
+        private readonly SemaphoreSlim sendCommandResetEvent = new(1, 1);
+        private readonly SemaphoreSlim commandAcknowledgedResetEvent = new(0, 1);
 
         private int currentLineNumber;
         private int resendLine;
@@ -45,17 +43,14 @@ namespace Print3DCloud.Client.Printers.Marlin
         /// <param name="newLine">The new line character(s) to use when communicating with the printer.</param>
         public SerialCommandManager(ILogger logger, Stream stream, Encoding encoding, string newLine)
         {
-            if (stream == null) throw new ArgumentNullException(nameof(stream));
-            if (encoding == null) throw new ArgumentNullException(nameof(encoding));
             if (string.IsNullOrEmpty(newLine)) throw new ArgumentNullException(nameof(newLine));
 
             this.logger = logger ?? throw new ArgumentNullException(nameof(logger));
+            this.stream = stream ?? throw new ArgumentNullException(nameof(stream));
+            this.encoding = encoding ?? throw new ArgumentNullException(nameof(encoding));
+            this.newLine = newLine;
+
             this.streamReader = new StreamReader(stream, encoding);
-            this.streamWriter = new StreamWriter(stream, encoding)
-            {
-                NewLine = newLine,
-                AutoFlush = true,
-            };
         }
 
         /// <summary>
@@ -109,12 +104,18 @@ namespace Print3DCloud.Client.Printers.Marlin
 
             command = command.Trim();
 
-            if (command.StartsWith(LineCommentCharacter))
+            int index = command.IndexOf(LineCommentCharacter);
+
+            if (index == 0)
             {
                 return;
             }
+            else if (index != -1)
+            {
+                command = command.Substring(0, index).TrimEnd();
+            }
 
-            await this.sendCommandResetEvent.WaitOneAsync(cancellationToken);
+            await this.sendCommandResetEvent.WaitAsync(cancellationToken).ConfigureAwait(false);
 
             try
             {
@@ -136,7 +137,7 @@ namespace Print3DCloud.Client.Printers.Marlin
                     this.logger.LogInformation($"Command has multiple lines; only the first one ('{command}') will be sent");
                 }
 
-                string line = this.BuildCommand(command);
+                byte[] line = this.BuildCommand(command);
 
                 this.resendLine = this.currentLineNumber;
 
@@ -158,7 +159,7 @@ namespace Print3DCloud.Client.Printers.Marlin
             }
             finally
             {
-                this.sendCommandResetEvent.Set();
+                this.sendCommandResetEvent.Release();
             }
         }
 
@@ -178,7 +179,12 @@ namespace Print3DCloud.Client.Printers.Marlin
 
             string? line = await this.ReadLineAsync(cancellationToken);
 
-            if (line == PrinterAliveMessage)
+            if (line.StartsWith(CommandAcknowledgedMessage))
+            {
+                this.commandAcknowledgedResetEvent.Release();
+                return new MarlinMessage(line, MarlinMessageType.CommandAcknowledgement);
+            }
+            else if (line == PrinterAliveMessage)
             {
                 throw new PrinterHaltedException("Printer restarted unexpectedly");
             }
@@ -204,11 +210,6 @@ namespace Print3DCloud.Client.Printers.Marlin
                 this.logger.LogWarning(line);
                 return new MarlinMessage(line, MarlinMessageType.UnknownCommand);
             }
-            else if (line.StartsWith(CommandAcknowledgedMessage))
-            {
-                this.commandAcknowledgedResetEvent.Set();
-                return new MarlinMessage(line, MarlinMessageType.CommandAcknowledgement);
-            }
 
             return new MarlinMessage(line, MarlinMessageType.Message);
         }
@@ -228,63 +229,54 @@ namespace Print3DCloud.Client.Printers.Marlin
         {
             if (disposing)
             {
-                this.readerSemaphore.Wait();
-                this.writerSemaphore.Wait();
-
-                this.streamWriter.Dispose();
                 this.streamReader.Dispose();
+                this.stream.Dispose();
                 this.sendCommandResetEvent.Dispose();
                 this.commandAcknowledgedResetEvent.Dispose();
-                this.readerSemaphore.Dispose();
-                this.writerSemaphore.Dispose();
             }
         }
 
-        private string BuildCommand(string command)
+        private byte[] BuildCommand(string command)
         {
-            string line = $"N{this.currentLineNumber} {CommentRegex.Replace(command, string.Empty).Trim()}";
-            return line + "*" + this.GetCommandChecksum(line);
+            byte[] data = this.encoding.GetBytes($"N" + this.currentLineNumber + " " + command);
+
+            byte checksum = this.GetCommandChecksum(data);
+            byte[] data2 = this.encoding.GetBytes($"*" + checksum + this.newLine);
+
+            byte[] data3 = new byte[data.Length + data2.Length];
+            data.CopyTo(data3, 0);
+            data2.CopyTo(data3, data.Length);
+
+            return data3;
         }
 
         /// <summary>
         /// Calculates a simple checksum for the given command.
         /// Based on Marlin's source code: https://github.com/MarlinFirmware/Marlin/blob/8e1ea6a2fa1b90a58b4257eec9fbc2923adda680/Marlin/src/gcode/queue.cpp#L485.
         /// </summary>
-        /// <param name="command">The command for which to generate a checksum.</param>
+        /// <param name="data">The command for which to generate a checksum.</param>
         /// <returns>The command's checksum.</returns>
-        private byte GetCommandChecksum(string command)
+        private byte GetCommandChecksum(byte[] data)
         {
-            byte[] bytes = this.streamWriter.Encoding.GetBytes(command);
             byte checksum = 0;
 
-            foreach (byte b in bytes)
+            for (int i = 0; i < data.Length; i++)
             {
-                checksum ^= b;
+                checksum ^= data[i];
             }
 
             return checksum;
         }
 
-        private async Task SendAndWaitForAcknowledgementAsync(string command, CancellationToken cancellationToken)
+        private async Task SendAndWaitForAcknowledgementAsync(byte[] command, CancellationToken cancellationToken)
         {
             await this.WriteLineAsync(command, cancellationToken);
-            await this.commandAcknowledgedResetEvent.WaitOneAsync(cancellationToken);
+            await this.commandAcknowledgedResetEvent.WaitAsync(cancellationToken);
         }
 
-        private async Task WriteLineAsync(string line, CancellationToken cancellationToken)
+        private async Task WriteLineAsync(byte[] line, CancellationToken cancellationToken)
         {
-            this.logger.LogTrace($"Sending: {line}");
-
-            await this.writerSemaphore.WaitAsync(cancellationToken);
-
-            try
-            {
-                await this.streamWriter.WriteLineAsync(line);
-            }
-            finally
-            {
-                this.writerSemaphore.Release();
-            }
+            await this.stream.WriteAsync(line, cancellationToken);
         }
 
         private async Task<string> ReadLineAsync(CancellationToken cancellationToken)
@@ -294,22 +286,10 @@ namespace Print3DCloud.Client.Printers.Marlin
             while (string.IsNullOrEmpty(line))
             {
                 cancellationToken.ThrowIfCancellationRequested();
-
-                await this.readerSemaphore.WaitAsync(cancellationToken);
-
-                try
-                {
-                    line = await this.streamReader.ReadLineAsync();
-                }
-                finally
-                {
-                    this.readerSemaphore.Release();
-                }
+                line = await this.streamReader.ReadLineAsync();
             }
 
             line = line.Trim();
-
-            this.logger.LogTrace($"Received: {line}");
 
             return line;
         }
