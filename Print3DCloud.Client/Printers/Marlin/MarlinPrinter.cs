@@ -94,10 +94,10 @@ namespace Print3DCloud.Client.Printers.Marlin
 
             if (!await this.GetPrinterSupportsAutomaticTemperatureReportingAsync(this.serialCommandProcessor, cancellationToken))
             {
-                this.temperaturePollingTask = Task.Run(() => this.TemperaturePolling(this.globalCancellationTokenSource.Token), cancellationToken).ContinueWith(this.HandleTemperaturePollingTaskCompleted, CancellationToken.None);
+                this.temperaturePollingTask = Task.Run(() => this.TemperaturePolling(this.globalCancellationTokenSource.Token), cancellationToken).ContinueWith(t => this.HandleTaskCompletedAsync(t, "Temperature polling"), CancellationToken.None);
             }
 
-            this.receiveLoopTask = Task.Run(() => this.ReceiveLoop(this.globalCancellationTokenSource.Token), cancellationToken).ContinueWith(this.HandleReceiveLoopTaskCompleted, CancellationToken.None);
+            this.receiveLoopTask = Task.Run(() => this.ReceiveLoop(this.globalCancellationTokenSource.Token), cancellationToken).ContinueWith(t => this.HandleTaskCompletedAsync(t, "Receive loop"), CancellationToken.None);
 
             this.State = PrinterState.Ready;
         }
@@ -168,7 +168,7 @@ namespace Print3DCloud.Client.Printers.Marlin
             this.State = PrinterState.Printing;
             this.printCancellationTokenSource = new CancellationTokenSource();
 
-            this.printTask = Task.Run(() => this.RunPrintAsync(fileStream, this.printCancellationTokenSource.Token), cancellationToken);
+            this.printTask = Task.Run(() => this.RunPrintAsync(fileStream, this.printCancellationTokenSource.Token).ContinueWith(t => this.HandleTaskCompletedAsync(t, "Print")), cancellationToken);
 
             return Task.CompletedTask;
         }
@@ -280,25 +280,36 @@ namespace Print3DCloud.Client.Printers.Marlin
         {
             using var streamReader = new StreamReader(fileStream);
 
-            try
+            while (streamReader.Peek() != -1)
             {
-                while (streamReader.Peek() != -1)
-                {
-                    cancellationToken.ThrowIfCancellationRequested();
+                cancellationToken.ThrowIfCancellationRequested();
 
-                    string? line = await streamReader.ReadLineAsync().ConfigureAwait(false);
+                string? line = await streamReader.ReadLineAsync().ConfigureAwait(false);
 
-                    if (string.IsNullOrWhiteSpace(line)) continue;
+                if (string.IsNullOrWhiteSpace(line)) continue;
 
-                    await this.SendCommandAsync(line, cancellationToken).ConfigureAwait(false);
-                }
-
-                this.State = PrinterState.Ready;
+                await this.SendCommandAsync(line, cancellationToken).ConfigureAwait(false);
             }
-            catch (Exception ex)
+
+            this.State = PrinterState.Ready;
+        }
+
+        private async Task HandleTaskCompletedAsync(Task task, string name)
+        {
+            if (task.IsCompletedSuccessfully)
             {
-                this.logger.LogError(ex?.ToString());
-                this.State = PrinterState.Errored;
+                this.logger.LogDebug($"{name} task completed");
+            }
+            else if (task.IsCanceled)
+            {
+                this.logger.LogDebug($"{name} task canceled");
+            }
+            else if (task.IsFaulted)
+            {
+                this.logger.LogError($"{name} task errored");
+                this.logger.LogError(task.Exception!.ToString());
+
+                await this.DisconnectAsync();
             }
         }
 
@@ -308,25 +319,6 @@ namespace Print3DCloud.Client.Printers.Marlin
             {
                 await this.SendCommandAsync(ReportTemperaturesCommand, cancellationToken).ConfigureAwait(false);
                 await Task.Delay(TemperatureReportingIntervalSeconds * 1000, cancellationToken).ConfigureAwait(false);
-            }
-        }
-
-        private async Task HandleTemperaturePollingTaskCompleted(Task task)
-        {
-            if (task.IsCompletedSuccessfully)
-            {
-                this.logger.LogDebug("Temperature Polling task completed");
-            }
-            else if (task.IsCanceled)
-            {
-                this.logger.LogWarning("Temperature Polling task canceled");
-            }
-            else if (task.IsFaulted)
-            {
-                this.logger.LogError("Temperature Polling task errored");
-                this.logger.LogError(task.Exception!.ToString());
-
-                await this.DisconnectAsync();
             }
         }
 
@@ -342,27 +334,6 @@ namespace Print3DCloud.Client.Printers.Marlin
                 }
 
                 this.HandleLine(line.Content);
-            }
-        }
-
-        private async Task HandleReceiveLoopTaskCompleted(Task task)
-        {
-            if (task.IsCompletedSuccessfully)
-            {
-                this.logger.LogDebug("Receive Loop task completed");
-            }
-            else if (task.IsCanceled)
-            {
-                this.logger.LogWarning("Receive Loop task canceled");
-            }
-            else if (task.IsFaulted)
-            {
-                this.logger.LogError("Receive Loop task errored");
-                this.logger.LogError(task.Exception!.ToString());
-
-                await this.DisconnectAsync();
-
-                this.State = PrinterState.Errored;
             }
         }
 
