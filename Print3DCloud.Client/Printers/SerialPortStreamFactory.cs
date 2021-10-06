@@ -12,7 +12,7 @@ namespace Print3DCloud.Client.Printers
         {
             return new SerialPortStream(portName, baudRate)
             {
-                RtsEnable = true,
+                RtsEnable = false,
                 DtrEnable = true,
                 NewLine = "\n",
             };
