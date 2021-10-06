@@ -64,8 +64,13 @@ jobs:
       with:
         dotnet-version: 5.0.x
 
-    - name: Run tests
-      run: dotnet test --collect:"XPlat Code Coverage"
+    - name: Run ActionCableSharp tests
+      working-directory: ActionCableSharp.Tests
+      run: dotnet test --collect:"XPlat Code Coverage" --logger "console;verbosity=normal"
+
+    - name: Run Print3DCloud.Client tests
+      working-directory: Print3DCloud.Client.Tests
+      run: dotnet test --collect:"XPlat Code Coverage" --logger "console;verbosity=normal"
 
     - name: Upload coverage to Codecov
       uses: codecov/codecov-action@v2
