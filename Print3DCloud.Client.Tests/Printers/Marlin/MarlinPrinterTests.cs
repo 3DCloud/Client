@@ -120,7 +120,7 @@ namespace Print3DCloud.Client.Tests.Printers.Marlin
             sim.SendMessage("message reporting something");
             sim.SendMessage("T0:136.73 /210.00 B:23.98 /60.00 T0:136.73 /210.00 T1:162.94 /0.00 @:127 B@:127 @0:127 @1:0");
 
-            await Task.Delay(5);
+            await Task.Delay(100);
 
             Assert.NotNull(printer.Temperatures);
 
