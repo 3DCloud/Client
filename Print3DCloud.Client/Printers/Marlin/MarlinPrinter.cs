@@ -281,7 +281,7 @@ namespace Print3DCloud.Client.Printers.Marlin
             // StreamReader takes care of closing the stream properly
             using var streamReader = new StreamReader(stream);
 
-            while (streamReader.Peek() != -1)
+            while (!streamReader.EndOfStream)
             {
                 cancellationToken.ThrowIfCancellationRequested();
 
@@ -316,16 +316,16 @@ namespace Print3DCloud.Client.Printers.Marlin
 
         private async Task TemperaturePolling(CancellationToken cancellationToken)
         {
-            while (this.State != PrinterState.Disconnecting && this.State != PrinterState.Disconnected)
+            while (this.serialCommandProcessor != null)
             {
-                await this.SendCommandAsync(ReportTemperaturesCommand, cancellationToken).ConfigureAwait(false);
+                await this.serialCommandProcessor.SendCommandAsync(ReportTemperaturesCommand, cancellationToken).ConfigureAwait(false);
                 await Task.Delay(TemperatureReportingIntervalSeconds * 1000, cancellationToken).ConfigureAwait(false);
             }
         }
 
         private async Task ReceiveLoop(CancellationToken cancellationToken)
         {
-            while (this.State != PrinterState.Disconnecting && this.State != PrinterState.Disconnected && this.serialCommandProcessor != null)
+            while (this.serialCommandProcessor != null)
             {
                 MarlinMessage line = await this.serialCommandProcessor.ReceiveLineAsync(cancellationToken).ConfigureAwait(false);
 
