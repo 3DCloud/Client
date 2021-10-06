@@ -16,6 +16,7 @@ namespace Print3DCloud.Client.Printers.Marlin
         private const string UnknownCommandMessage = "echo:Unknown command:";
         private const string PrinterAliveMessage = "start";
         private const char LineCommentCharacter = ';';
+        private const int SendCommandMaxRetries = 5;
 
         private static readonly byte[] SetLineNumberCommand = Encoding.ASCII.GetBytes("N0 M110 N0*125\n");
 
@@ -140,9 +141,15 @@ namespace Print3DCloud.Client.Printers.Marlin
                 byte[] line = this.BuildCommand(command);
 
                 this.resendLine = this.currentLineNumber;
+                int tries = 0;
 
                 while (this.resendLine > 0)
                 {
+                    if (++tries > SendCommandMaxRetries)
+                    {
+                        throw new IOException("Printer requested resend too many times");
+                    }
+
                     cancellationToken.ThrowIfCancellationRequested();
 
                     if (this.resendLine != this.currentLineNumber)

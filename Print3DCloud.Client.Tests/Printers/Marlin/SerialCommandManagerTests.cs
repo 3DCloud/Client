@@ -278,6 +278,40 @@ namespace Print3DCloud.Client.Tests.Printers.Marlin
         }
 
         [Fact]
+        public async Task SendCommandAsync_WhenResendRequestedTooManyTimes_ThrowsException()
+        {
+            using SerialPrinterStreamSimulator sim = new();
+
+            sim.RegisterResponse(new Regex(@"N(\d+) M104 S210\*\d+"), "Error:checksum mismatch, Last Line: 0\nResend: $1\nok");
+
+            SerialCommandManager serialCommandManager = await SetUpConnectedPrinter(sim);
+
+            Task commandTask = serialCommandManager.SendCommandAsync("M104 S210", TestHelpers.CreateTimeOutToken());
+
+            for (int i = 0; i < 5; i++)
+            {
+                MarlinMessage message = await serialCommandManager.ReceiveLineAsync(TestHelpers.CreateTimeOutToken());
+                Assert.Equal("Error:checksum mismatch, Last Line: 0", message.Content);
+                Assert.Equal(MarlinMessageType.Error, message.Type);
+
+                message = await serialCommandManager.ReceiveLineAsync(TestHelpers.CreateTimeOutToken());
+                Assert.Equal("Resend: 1", message.Content);
+                Assert.Equal(MarlinMessageType.ResendLine, message.Type);
+
+                message = await serialCommandManager.ReceiveLineAsync(TestHelpers.CreateTimeOutToken());
+                Assert.Equal("ok", message.Content);
+                Assert.Equal(MarlinMessageType.CommandAcknowledgement, message.Type);
+            }
+
+            IOException exception = await Assert.ThrowsAsync<IOException>(async () =>
+            {
+                await commandTask;
+            });
+
+            Assert.Equal("Printer requested resend too many times", exception.Message);
+        }
+
+        [Fact]
         public async Task SendCommandAsync_WhenNotConnected_ThrowsException()
         {
             using SerialPrinterStreamSimulator sim = new();
