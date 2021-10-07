@@ -2,7 +2,7 @@
 using System.Collections.Generic;
 using System.Globalization;
 using System.IO;
-using System.IO.Ports;
+using System.Text;
 using System.Text.RegularExpressions;
 using System.Threading;
 using System.Threading.Tasks;
@@ -72,14 +72,14 @@ namespace Print3DCloud.Client.Printers.Marlin
 
             this.logger.LogInformation($"Connecting to Marlin printer at port '{this.portName}'...");
 
-            ISerialPort serialPort = this.printerStreamFactory.CreatePrinterStream(this.portName, this.baudRate);
+            ISerialPort serialPort = this.printerStreamFactory.CreateSerialPort(this.portName, this.baudRate);
 
             serialPort.Open();
 
             serialPort.DiscardInBuffer();
             serialPort.DiscardOutBuffer();
 
-            this.serialCommandProcessor = new SerialCommandManager(this.logger, serialPort.BaseStream, serialPort.Encoding, serialPort.NewLine);
+            this.serialCommandProcessor = new SerialCommandManager(this.logger, serialPort.BaseStream, Encoding.UTF8, "\n");
             this.globalCancellationTokenSource = new CancellationTokenSource();
 
             await this.serialCommandProcessor.WaitForStartupAsync(cancellationToken);

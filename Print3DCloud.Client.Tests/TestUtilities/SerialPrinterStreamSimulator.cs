@@ -16,15 +16,11 @@ namespace Print3DCloud.Client.Tests.TestUtilities
         private readonly MemoryStream outputStream = new();
 
         private readonly List<ResponseMatch> responses = new();
-        private readonly Decoder decoder = Encoding.ASCII.GetDecoder();
+        private readonly Encoding encoding = Encoding.UTF8;
+        private readonly Decoder decoder = Encoding.UTF8.GetDecoder();
         private readonly char[] chars = new char[1024];
 
         private StringBuilder stringBuilder = new();
-
-        /// <summary>
-        /// Gets the encoding to use while communicating.
-        /// </summary>
-        public Encoding Encoding { get; init; } = Encoding.ASCII;
 
         /// <inheritdoc/>
         public override bool CanRead => true;
@@ -53,7 +49,7 @@ namespace Print3DCloud.Client.Tests.TestUtilities
         {
             lock (this.inputStream)
             {
-                byte[] data = this.Encoding.GetBytes(message + '\n');
+                byte[] data = this.encoding.GetBytes(message + '\n');
                 this.inputStream.Write(data);
                 this.inputStream.Seek(-data.Length, SeekOrigin.Current);
             }
@@ -135,7 +131,7 @@ namespace Print3DCloud.Client.Tests.TestUtilities
                                 this.inputStream.Position = this.inputStream.Length;
 
                                 string line = responseMatch.Regex.Replace(str, responseMatch.Response) + '\n';
-                                this.inputStream.Write(this.Encoding.GetBytes(line));
+                                this.inputStream.Write(this.encoding.GetBytes(line));
 
                                 this.inputStream.Position = prevPosition;
 
@@ -166,7 +162,7 @@ namespace Print3DCloud.Client.Tests.TestUtilities
                 return Array.Empty<string>();
             }
 
-            string str = this.Encoding.GetString(data);
+            string str = this.encoding.GetString(data);
 
             // trim last newline if necessary; we don't want to trim all newlines
             // since that would indicate something is sending empty messages

@@ -11,6 +11,6 @@
         /// <param name="portName">The name of the serial port.</param>
         /// <param name="baudRate">The baud rate to use during serial communication.</param>
         /// <returns>A new instance of a class implementing <see cref="ISerialPort"/>.</returns>
-        ISerialPort CreatePrinterStream(string portName, int baudRate);
+        ISerialPort CreateSerialPort(string portName, int baudRate);
     }
 }

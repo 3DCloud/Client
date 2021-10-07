@@ -24,7 +24,7 @@ namespace Print3DCloud.Client.Tests.Printers.Marlin
             sim.RegisterResponse(new Regex(@"N1 M155 S\d+\*\d+"), "ok");
 
             Mock<ISerialPortFactory> serialPortStreamFactoryMock = new();
-            serialPortStreamFactoryMock.Setup(f => f.CreatePrinterStream(It.IsAny<string>(), It.IsAny<int>())).Returns<string, int>((s, i) => serialPortStreamMock.Object);
+            serialPortStreamFactoryMock.Setup(f => f.CreateSerialPort(It.IsAny<string>(), It.IsAny<int>())).Returns<string, int>((s, i) => serialPortStreamMock.Object);
 
             MarlinPrinter printer = new(serialPortStreamFactoryMock.Object, TestHelpers.CreateLogger<MarlinPrinter>().Object, "COM0", 125_000);
 
@@ -38,7 +38,7 @@ namespace Print3DCloud.Client.Tests.Printers.Marlin
 
             await connectTask;
 
-            serialPortStreamFactoryMock.Verify(f => f.CreatePrinterStream("COM0", 125_000));
+            serialPortStreamFactoryMock.Verify(f => f.CreateSerialPort("COM0", 125_000));
             serialPortStreamMock.Verify(s => s.DiscardInBuffer());
             serialPortStreamMock.Verify(s => s.DiscardOutBuffer());
             serialPortStreamMock.Verify(s => s.Open());
@@ -56,7 +56,7 @@ namespace Print3DCloud.Client.Tests.Printers.Marlin
             sim.RegisterResponse(new Regex(@"N1 (M155 S\d+)\*\d+"), "echo:Unknown command: \"$1\"\nok");
 
             Mock<ISerialPortFactory> serialPortStreamFactoryMock = new();
-            serialPortStreamFactoryMock.Setup(f => f.CreatePrinterStream(It.IsAny<string>(), It.IsAny<int>())).Returns<string, int>((s, i) => serialPortStreamMock.Object);
+            serialPortStreamFactoryMock.Setup(f => f.CreateSerialPort(It.IsAny<string>(), It.IsAny<int>())).Returns<string, int>((s, i) => serialPortStreamMock.Object);
 
             MarlinPrinter printer = new(serialPortStreamFactoryMock.Object, TestHelpers.CreateLogger<MarlinPrinter>().Object, "COM0", 125_000);
 
@@ -70,7 +70,7 @@ namespace Print3DCloud.Client.Tests.Printers.Marlin
 
             await connectTask;
 
-            serialPortStreamFactoryMock.Verify(f => f.CreatePrinterStream("COM0", 125_000));
+            serialPortStreamFactoryMock.Verify(f => f.CreateSerialPort("COM0", 125_000));
             serialPortStreamMock.Verify(s => s.DiscardInBuffer());
             serialPortStreamMock.Verify(s => s.DiscardOutBuffer());
             serialPortStreamMock.Verify(s => s.Open());
@@ -233,7 +233,7 @@ namespace Print3DCloud.Client.Tests.Printers.Marlin
         public async Task StartPrintAsync_WhenPrinterIsNotReady_ThrowsException()
         {
             Mock<ISerialPortFactory> serialPortStreamFactoryMock = new();
-            serialPortStreamFactoryMock.Setup(f => f.CreatePrinterStream(It.IsAny<string>(), It.IsAny<int>())).Returns<string, int>((s, i) => CreateSerialPort("COM0", 125_000, new MemoryStream()).Object);
+            serialPortStreamFactoryMock.Setup(f => f.CreateSerialPort(It.IsAny<string>(), It.IsAny<int>())).Returns<string, int>((s, i) => CreateSerialPort("COM0", 125_000, new MemoryStream()).Object);
 
             MarlinPrinter printer = new(serialPortStreamFactoryMock.Object, TestHelpers.CreateLogger<MarlinPrinter>().Object, "COM0", 125_000);
 
@@ -258,7 +258,7 @@ namespace Print3DCloud.Client.Tests.Printers.Marlin
             sim.RegisterResponse(new Regex(@"N1 (M155 S\d+)\*\d+"), canReportTemperatures ? "ok" : "echo:Unknown command: \"$1\"\nok");
 
             Mock<ISerialPortFactory> serialPortStreamFactoryMock = new();
-            serialPortStreamFactoryMock.Setup(f => f.CreatePrinterStream(It.IsAny<string>(), It.IsAny<int>())).Returns<string, int>((s, i) => mock.Object);
+            serialPortStreamFactoryMock.Setup(f => f.CreateSerialPort(It.IsAny<string>(), It.IsAny<int>())).Returns<string, int>((s, i) => mock.Object);
 
             MarlinPrinter printer = new(serialPortStreamFactoryMock.Object, TestHelpers.CreateLogger<MarlinPrinter>().Object, "COM0", 125_000);
 
@@ -274,8 +274,6 @@ namespace Print3DCloud.Client.Tests.Printers.Marlin
             Mock<ISerialPort> serialPortMock = new();
             serialPortMock.SetupGet(p => p.PortName).Returns(portName);
             serialPortMock.SetupGet(p => p.BaudRate).Returns(baudRate);
-            serialPortMock.SetupGet(p => p.Encoding).Returns(Encoding.ASCII);
-            serialPortMock.SetupGet(p => p.NewLine).Returns("\n");
             serialPortMock.SetupGet(p => p.DtrEnable).Returns(true);
             serialPortMock.SetupGet(p => p.RtsEnable).Returns(true);
             serialPortMock.SetupGet(p => p.BaseStream).Returns(baseStream);

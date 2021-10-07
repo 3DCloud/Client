@@ -14,14 +14,9 @@ namespace Print3DCloud.Client
         Stream BaseStream { get; }
 
         /// <summary>
-        /// Gets the serial baud rate.
+        /// Gets or sets the serial baud rate.
         /// </summary>
-        int BaudRate { get; }
-
-        /// <summary>
-        /// Gets the byte encoding for pre- and post-transmission conversion of text.
-        /// </summary>
-        Encoding Encoding { get; }
+        int BaudRate { get; set; }
 
         /// <summary>
         /// Gets a value indicating whether the serial port is open or not.
@@ -29,24 +24,19 @@ namespace Print3DCloud.Client
         bool IsOpen { get; }
 
         /// <summary>
-        /// Gets a value indicating whether the Data Terminal Ready (DTR) signal is enabled during serial communication.
+        /// Gets or sets a value indicating whether the Data Terminal Ready (DTR) signal is enabled during serial communication.
         /// </summary>
-        bool DtrEnable { get; }
+        bool DtrEnable { get; set; }
 
         /// <summary>
-        /// Gets the value used to interpret the end of a call to the <see cref="ReadLine"/> and <see cref="WriteLine(string)"/> methods.
+        /// Gets or sets the port for communications, including but not limited to all available COM ports.
         /// </summary>
-        string NewLine { get; }
+        string PortName { get; set; }
 
         /// <summary>
-        /// Gets the port for communications, including but not limited to all available COM ports.
+        /// Gets or sets a value indicating whether the Request to Send (RTS) signal is enabled during serial communication.
         /// </summary>
-        string PortName { get; }
-
-        /// <summary>
-        /// Gets a value indicating whether the Request to Send (RTS) signal is enabled during serial communication.
-        /// </summary>
-        bool RtsEnable { get; }
+        bool RtsEnable { get; set; }
 
         /// <summary>
         /// Closes the port connection, sets the <see cref="IsOpen"/> property to false, and disposes of the internal <see cref="Stream"/> object.

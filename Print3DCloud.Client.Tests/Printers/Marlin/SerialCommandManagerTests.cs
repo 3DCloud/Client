@@ -31,7 +31,7 @@ namespace Print3DCloud.Client.Tests.Printers.Marlin
 
             Assert.Throws<ArgumentNullException>("logger", () =>
             {
-                _ = new SerialCommandManager(null!, stream, Encoding.ASCII, "\n");
+                _ = new SerialCommandManager(null!, stream, Encoding.UTF8, "\n");
             });
         }
 
@@ -43,7 +43,7 @@ namespace Print3DCloud.Client.Tests.Printers.Marlin
 
             Assert.Throws<ArgumentNullException>("stream", () =>
             {
-                _ = new SerialCommandManager(loggerMock.Object, null!, Encoding.ASCII, "\n");
+                _ = new SerialCommandManager(loggerMock.Object, null!, Encoding.UTF8, "\n");
             });
         }
 
@@ -67,7 +67,7 @@ namespace Print3DCloud.Client.Tests.Printers.Marlin
 
             Assert.Throws<ArgumentNullException>("newLine", () =>
             {
-                _ = new SerialCommandManager(loggerMock.Object, stream, Encoding.ASCII, null!);
+                _ = new SerialCommandManager(loggerMock.Object, stream, Encoding.UTF8, null!);
             });
         }
 
@@ -79,7 +79,7 @@ namespace Print3DCloud.Client.Tests.Printers.Marlin
 
             Assert.Throws<ArgumentNullException>("newLine", () =>
             {
-                _ = new SerialCommandManager(loggerMock.Object, stream, Encoding.ASCII, string.Empty);
+                _ = new SerialCommandManager(loggerMock.Object, stream, Encoding.UTF8, string.Empty);
             });
         }
 
@@ -442,7 +442,7 @@ namespace Print3DCloud.Client.Tests.Printers.Marlin
                 logger = new Mock<ILogger<MarlinPrinter>>().Object;
             }
 
-            return new SerialCommandManager(logger, stream, Encoding.ASCII, "\n");
+            return new SerialCommandManager(logger, stream, Encoding.UTF8, "\n");
         }
 
         private static async Task<SerialCommandManager> SetUpConnectedPrinter(SerialPrinterStreamSimulator sim)
