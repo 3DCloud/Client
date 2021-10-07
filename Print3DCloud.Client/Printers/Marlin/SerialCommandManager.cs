@@ -27,8 +27,8 @@ namespace Print3DCloud.Client.Printers.Marlin
 
         private readonly StreamReader streamReader;
 
-        private readonly SemaphoreSlim sendCommandResetEvent = new(1, 1);
-        private readonly SemaphoreSlim commandAcknowledgedResetEvent = new(0, 1);
+        private readonly SemaphoreSlim sendCommandSemaphore = new(1, 1);
+        private readonly SemaphoreSlim commandAcknowledgedSemaphore = new(0, 1);
 
         private int currentLineNumber;
         private int resendLine;
@@ -116,7 +116,7 @@ namespace Print3DCloud.Client.Printers.Marlin
                 command = command.Substring(0, index).TrimEnd();
             }
 
-            await this.sendCommandResetEvent.WaitAsync(cancellationToken).ConfigureAwait(false);
+            await this.sendCommandSemaphore.WaitAsync(cancellationToken).ConfigureAwait(false);
 
             try
             {
@@ -166,7 +166,7 @@ namespace Print3DCloud.Client.Printers.Marlin
             }
             finally
             {
-                this.sendCommandResetEvent.Release();
+                this.sendCommandSemaphore.Release();
             }
         }
 
@@ -184,11 +184,11 @@ namespace Print3DCloud.Client.Printers.Marlin
                 throw new InvalidOperationException("Startup did not complete");
             }
 
-            string? line = await this.ReadLineAsync(cancellationToken);
+            string line = await this.ReadLineAsync(cancellationToken);
 
             if (line.StartsWith(CommandAcknowledgedMessage))
             {
-                this.commandAcknowledgedResetEvent.Release();
+                this.commandAcknowledgedSemaphore.Release();
                 return new MarlinMessage(line, MarlinMessageType.CommandAcknowledgement);
             }
             else if (line == PrinterAliveMessage)
@@ -238,23 +238,9 @@ namespace Print3DCloud.Client.Printers.Marlin
             {
                 this.streamReader.Dispose();
                 this.stream.Dispose();
-                this.sendCommandResetEvent.Dispose();
-                this.commandAcknowledgedResetEvent.Dispose();
+                this.sendCommandSemaphore.Dispose();
+                this.commandAcknowledgedSemaphore.Dispose();
             }
-        }
-
-        private byte[] BuildCommand(string command)
-        {
-            byte[] data = this.encoding.GetBytes($"N" + this.currentLineNumber + " " + command);
-
-            byte checksum = this.GetCommandChecksum(data);
-            byte[] data2 = this.encoding.GetBytes($"*" + checksum + this.newLine);
-
-            byte[] data3 = new byte[data.Length + data2.Length];
-            data.CopyTo(data3, 0);
-            data2.CopyTo(data3, data.Length);
-
-            return data3;
         }
 
         /// <summary>
@@ -263,7 +249,7 @@ namespace Print3DCloud.Client.Printers.Marlin
         /// </summary>
         /// <param name="data">The command for which to generate a checksum.</param>
         /// <returns>The command's checksum.</returns>
-        private byte GetCommandChecksum(byte[] data)
+        private static byte GetCommandChecksum(byte[] data)
         {
             byte checksum = 0;
 
@@ -275,30 +261,44 @@ namespace Print3DCloud.Client.Printers.Marlin
             return checksum;
         }
 
+        private byte[] BuildCommand(string command)
+        {
+            byte[] commandBytes = this.encoding.GetBytes($"N" + this.currentLineNumber + " " + command);
+
+            byte checksum = GetCommandChecksum(commandBytes);
+            byte[] checksumBytes = this.encoding.GetBytes($"*" + checksum + this.newLine);
+
+            byte[] fullCommandBytes = new byte[commandBytes.Length + checksumBytes.Length];
+            commandBytes.CopyTo(fullCommandBytes, 0);
+            checksumBytes.CopyTo(fullCommandBytes, commandBytes.Length);
+
+            return fullCommandBytes;
+        }
+
         private async Task SendAndWaitForAcknowledgementAsync(byte[] command, CancellationToken cancellationToken)
         {
             await this.WriteLineAsync(command, cancellationToken);
-            await this.commandAcknowledgedResetEvent.WaitAsync(cancellationToken);
+            await this.commandAcknowledgedSemaphore.WaitAsync(cancellationToken);
         }
 
         private async Task WriteLineAsync(byte[] line, CancellationToken cancellationToken)
         {
             await this.stream.WriteAsync(line, cancellationToken);
+            await this.stream.FlushAsync(cancellationToken);
         }
 
         private async Task<string> ReadLineAsync(CancellationToken cancellationToken)
         {
-            string? line = null;
+            string? line;
 
-            while (string.IsNullOrEmpty(line))
+            do
             {
                 cancellationToken.ThrowIfCancellationRequested();
                 line = await this.streamReader.ReadLineAsync();
             }
+            while (string.IsNullOrWhiteSpace(line));
 
-            line = line.Trim();
-
-            return line;
+            return line.Trim();
         }
     }
 }

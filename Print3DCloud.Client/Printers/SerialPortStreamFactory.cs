@@ -1,21 +1,14 @@
-﻿using RJCP.IO.Ports;
-
-namespace Print3DCloud.Client.Printers
+﻿namespace Print3DCloud.Client.Printers
 {
     /// <summary>
-    /// Factory that creates instances of <see cref="SerialPortStream"/>.
+    /// Factory that creates instances of <see cref="SerialPortWrapper"/>.
     /// </summary>
-    internal class SerialPortStreamFactory : ISerialPortStreamFactory
+    internal class SerialPortStreamFactory : ISerialPortFactory
     {
         /// <inheritdoc/>
-        public ISerialPortStream CreatePrinterStream(string portName, int baudRate)
+        public ISerialPort CreatePrinterStream(string portName, int baudRate)
         {
-            return new SerialPortStream(portName, baudRate)
-            {
-                RtsEnable = false,
-                DtrEnable = true,
-                NewLine = "\n",
-            };
+            return new SerialPortWrapper(portName, baudRate);
         }
     }
 }

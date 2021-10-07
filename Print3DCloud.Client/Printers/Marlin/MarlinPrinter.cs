@@ -2,11 +2,11 @@
 using System.Collections.Generic;
 using System.Globalization;
 using System.IO;
+using System.IO.Ports;
 using System.Text.RegularExpressions;
 using System.Threading;
 using System.Threading.Tasks;
 using Microsoft.Extensions.Logging;
-using RJCP.IO.Ports;
 
 namespace Print3DCloud.Client.Printers.Marlin
 {
@@ -26,7 +26,7 @@ namespace Print3DCloud.Client.Printers.Marlin
 
         private static readonly Regex TemperaturesRegex = new(@"(?<sensor>B|T\d?):(?<current>[\d\.]+) \/(?<target>[\d\.]+)");
 
-        private readonly ISerialPortStreamFactory printerStreamFactory;
+        private readonly ISerialPortFactory printerStreamFactory;
         private readonly ILogger<MarlinPrinter> logger;
         private readonly string portName;
         private readonly int baudRate;
@@ -46,7 +46,7 @@ namespace Print3DCloud.Client.Printers.Marlin
         /// <param name="logger">The logger that should be used for this printer.</param>
         /// <param name="portName">Name of the serial port to which this printer should connect.</param>
         /// <param name="baudRate">The baud rate to be used for serial communication.</param>
-        public MarlinPrinter(ISerialPortStreamFactory printerStreamFactory, ILogger<MarlinPrinter> logger, string portName, int baudRate = 250_000)
+        public MarlinPrinter(ISerialPortFactory printerStreamFactory, ILogger<MarlinPrinter> logger, string portName, int baudRate = 250_000)
         {
             this.printerStreamFactory = printerStreamFactory;
             this.logger = logger;
@@ -75,15 +75,14 @@ namespace Print3DCloud.Client.Printers.Marlin
 
             this.logger.LogInformation($"Connecting to Marlin printer at port '{this.portName}'...");
 
-            ISerialPortStream serialPort = this.printerStreamFactory.CreatePrinterStream(this.portName, this.baudRate);
-
-            // clean up anything that's currently there
-            serialPort.DiscardInBuffer();
-            serialPort.DiscardOutBuffer();
+            ISerialPort serialPort = this.printerStreamFactory.CreatePrinterStream(this.portName, this.baudRate);
 
             serialPort.Open();
 
-            this.serialCommandProcessor = new SerialCommandManager(this.logger, (Stream)serialPort, serialPort.Encoding, serialPort.NewLine);
+            serialPort.DiscardInBuffer();
+            serialPort.DiscardOutBuffer();
+
+            this.serialCommandProcessor = new SerialCommandManager(this.logger, serialPort.BaseStream, serialPort.Encoding, serialPort.NewLine);
             this.globalCancellationTokenSource = new CancellationTokenSource();
 
             await this.serialCommandProcessor.WaitForStartupAsync(cancellationToken);
