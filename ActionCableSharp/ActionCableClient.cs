@@ -83,7 +83,6 @@ namespace ActionCableSharp
             this.JsonSerializerOptions = new JsonSerializerOptions
             {
                 DefaultIgnoreCondition = JsonIgnoreCondition.WhenWritingNull,
-                DictionaryKeyPolicy = namingPolicy,
                 Converters =
                 {
                     new JsonStringEnumMemberConverter(namingPolicy),

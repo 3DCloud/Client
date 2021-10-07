@@ -255,7 +255,9 @@ namespace Print3DCloud.Client
             {
                 await this.subscription.PerformAsync(
                     new PrinterStatesMessage(
-                        this.printers.Select(kvp => new PrinterStateWithTemperatures(kvp.Key, kvp.Value.Printer.State, kvp.Value.Printer.Temperatures))),
+                        this.printers.ToDictionary(
+                            kvp => kvp.Key,
+                            kvp => new PrinterStateWithTemperatures(kvp.Value.Printer.State, kvp.Value.Printer.Temperatures))),
                     cancellationToken);
             }
             catch (Exception ex)
