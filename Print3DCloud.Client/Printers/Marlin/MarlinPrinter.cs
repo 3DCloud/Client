@@ -55,9 +55,6 @@ namespace Print3DCloud.Client.Printers.Marlin
         }
 
         /// <inheritdoc/>
-        public event Action<string>? LogMessage;
-
-        /// <inheritdoc/>
         public PrinterState State { get; private set; } = PrinterState.Disconnected;
 
         /// <inheritdoc/>

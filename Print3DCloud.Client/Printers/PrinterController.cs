@@ -75,13 +75,6 @@ namespace Print3DCloud.Client.Printers
             }
         }
 
-        private void Printer_LogMessage(string message)
-        {
-            if (this.Subscription.State != SubscriptionState.Subscribed) return;
-
-            this.Subscription.PerformAsync(new PrinterMessage(message), CancellationToken.None);
-        }
-
         private async void SendCommand(SendCommandMessage message)
         {
             if (string.IsNullOrWhiteSpace(message.Command)) return;

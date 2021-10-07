@@ -29,9 +29,6 @@ namespace Print3DCloud.Client.Printers
         }
 
         /// <inheritdoc/>
-        public event Action<string>? LogMessage;
-
-        /// <inheritdoc/>
         public PrinterState State { get; private set; }
 
         /// <inheritdoc/>
@@ -48,7 +45,6 @@ namespace Print3DCloud.Client.Printers
         public Task ConnectAsync(CancellationToken cancellationToken)
         {
             this.logger.LogInformation("Connected");
-            this.LogMessage?.Invoke("Connected");
             this.cancellationTokenSource = new CancellationTokenSource();
             this.connectedTask = Task.Run(this.StatusLoop, cancellationToken).ContinueWith(this.HandleStatusLoopTaskCompleted, CancellationToken.None);
             return Task.CompletedTask;
@@ -65,7 +61,6 @@ namespace Print3DCloud.Client.Printers
             }
 
             this.logger.LogInformation("Disconnected");
-            this.LogMessage?.Invoke("Disconnected");
         }
 
         /// <inheritdoc/>
@@ -110,7 +105,6 @@ namespace Print3DCloud.Client.Printers
         public Task SendCommandAsync(string command, CancellationToken cancellationToken)
         {
             this.logger.LogInformation($"SEND {command}");
-            this.LogMessage?.Invoke($"SEND {command}");
             return Task.Delay(500, cancellationToken);
         }
 
@@ -148,8 +142,6 @@ namespace Print3DCloud.Client.Printers
             while (true)
             {
                 cancellationToken.ThrowIfCancellationRequested();
-
-                this.LogMessage?.Invoke("RECV temperatures");
 
                 await Task.Delay(1000);
             }
