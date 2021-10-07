@@ -299,9 +299,9 @@ namespace ActionCableSharp
         }
 
         /// <summary>
-        /// Cleans up managed objects that implement IDiposable (if <paramref name="disposing"/> is true) and unmanaged resources/objects.
+        /// Releases the unmanaged resources used by the System.IO.Ports.SerialPort and optionally releases the managed resources.
         /// </summary>
-        /// <param name="disposing">Whether this is being called from a Dispose method or not.</param>
+        /// <param name="disposing">true to release both managed and unmanaged resources; false to release only unmanaged resources.</param>
         protected virtual void Dispose(bool disposing)
         {
             if (disposing)

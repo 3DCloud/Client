@@ -142,18 +142,33 @@ namespace ActionCableSharp
         /// <inheritdoc/>
         public void Dispose()
         {
-            if (this.client != null)
+            this.Dispose(true);
+            GC.SuppressFinalize(this);
+        }
+
+        /// <summary>
+        /// Releases the unmanaged resources used by the System.IO.Ports.SerialPort and optionally releases the managed resources.
+        /// </summary>
+        /// <param name="disposing">true to release both managed and unmanaged resources; false to release only unmanaged resources.</param>
+        protected void Dispose(bool disposing)
+        {
+            if (disposing)
             {
-                this.client.Connected -= this.Client_Connected;
-                this.client.Disconnected -= this.Client_Disconnected;
-                this.client.MessageReceived -= this.Client_MessageReceived;
+                if (this.client != null)
+                {
+                    this.client.Connected -= this.Client_Connected;
+                    this.client.Disconnected -= this.Client_Disconnected;
+                    this.client.MessageReceived -= this.Client_MessageReceived;
+                }
+
+                if (this.State != SubscriptionState.Unsubscribed)
+                {
+                    this.State = SubscriptionState.Unsubscribed;
+                    this.Unsubscribed?.Invoke();
+                }
+
+                this.callbacks.Clear();
             }
-
-            if (this.State == SubscriptionState.Unsubscribed) return;
-
-            this.State = SubscriptionState.Unsubscribed;
-            this.Unsubscribed?.Invoke();
-            this.callbacks.Clear();
         }
 
         private async void Client_Connected()

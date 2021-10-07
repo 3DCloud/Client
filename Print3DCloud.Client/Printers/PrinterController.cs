@@ -50,8 +50,6 @@ namespace Print3DCloud.Client.Printers
         /// <returns>A <see cref="Task"/> that completes once the subscription request has been sent and the printer is connected.</returns>
         public async Task SubscribeAndConnect(CancellationToken cancellationToken)
         {
-            this.Printer.LogMessage += this.Printer_LogMessage;
-
             await this.Subscription.SubscribeAsync(cancellationToken);
 
             await this.Printer.ConnectAsync(cancellationToken).ConfigureAwait(false);
@@ -60,10 +58,21 @@ namespace Print3DCloud.Client.Printers
         /// <inheritdoc/>
         public void Dispose()
         {
-            this.Printer.LogMessage -= this.Printer_LogMessage;
+            this.Dispose(true);
+            GC.SuppressFinalize(this);
+        }
 
-            this.Printer.Dispose();
-            this.Subscription.Dispose();
+        /// <summary>
+        /// Releases the unmanaged resources used by the System.IO.Ports.SerialPort and optionally releases the managed resources.
+        /// </summary>
+        /// <param name="disposing">true to release both managed and unmanaged resources; false to release only unmanaged resources.</param>
+        protected void Dispose(bool disposing)
+        {
+            if (disposing)
+            {
+                this.Printer.Dispose();
+                this.Subscription.Dispose();
+            }
         }
 
         private void Printer_LogMessage(string message)

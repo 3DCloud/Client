@@ -126,6 +126,16 @@ namespace Print3DCloud.Client.Printers
         /// <inheritdoc/>
         public void Dispose()
         {
+            this.Dispose(true);
+            GC.SuppressFinalize(true);
+        }
+
+        /// <summary>
+        /// Releases the unmanaged resources used by the System.IO.Ports.SerialPort and optionally releases the managed resources.
+        /// </summary>
+        /// <param name="disposing">true to release both managed and unmanaged resources; false to release only unmanaged resources.</param>
+        protected void Dispose(bool disposing)
+        {
             this.State = PrinterState.Disconnected;
         }
 

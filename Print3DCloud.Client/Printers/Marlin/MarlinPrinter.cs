@@ -209,6 +209,7 @@ namespace Print3DCloud.Client.Printers.Marlin
         public void Dispose()
         {
             this.Dispose(true);
+            GC.SuppressFinalize(this);
         }
 
         /// <summary>
