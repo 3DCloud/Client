@@ -121,7 +121,7 @@ namespace Print3DCloud.Client.Printers
         public void Dispose()
         {
             this.Dispose(true);
-            GC.SuppressFinalize(true);
+            GC.SuppressFinalize(this);
         }
 
         /// <summary>
