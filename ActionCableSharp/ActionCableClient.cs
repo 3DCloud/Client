@@ -165,7 +165,7 @@ namespace ActionCableSharp
 
             if (this.State is ClientState.Disconnecting or ClientState.Disconnected)
             {
-                throw new InvalidOperationException("Already disconnecting");
+                throw new InvalidOperationException("Client isn't connected");
             }
 
             this.State = ClientState.Disconnecting;

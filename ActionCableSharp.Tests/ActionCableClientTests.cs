@@ -108,10 +108,13 @@ namespace ActionCableSharp.Tests
             var client = new ActionCableClient(uri, "dummy", mockWebSocketFactory.Object);
             var cancellationToken = new CancellationToken(false);
 
-            // Act
-            await client.DisconnectAsync(cancellationToken).ConfigureAwait(false);
+            // Act & Assert
+            InvalidOperationException exception = await Assert.ThrowsAsync<InvalidOperationException>(async () =>
+            {
+                await client.DisconnectAsync(cancellationToken).ConfigureAwait(false);
+            });
 
-            // Assert
+            Assert.Equal("Client isn't connected", exception.Message);
             Assert.Equal(ClientState.Disconnected, client.State);
         }
 
