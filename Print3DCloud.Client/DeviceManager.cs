@@ -26,7 +26,6 @@ namespace Print3DCloud.Client
         private readonly ILogger<DeviceManager> logger;
         private readonly IServiceProvider serviceProvider;
         private readonly ActionCableClient actionCableClient;
-        private readonly Config config;
         private readonly IHostApplicationLifetime hostApplicationLifetime;
 
         private readonly string dummyPrinterId;
@@ -49,11 +48,10 @@ namespace Print3DCloud.Client
             this.logger = logger;
             this.serviceProvider = serviceProvider;
             this.actionCableClient = actionCableClient;
-            this.config = config;
             this.hostApplicationLifetime = hostApplicationLifetime;
 
             this.dummyPrinterId = $"{config.ClientId}_dummy";
-            this.subscription = this.actionCableClient.GetSubscription(new ClientIdentifier(this.config.ClientId, this.config.Secret));
+            this.subscription = this.actionCableClient.GetSubscription(new ClientIdentifier(config.ClientId, config.Secret));
 
             this.subscription.Subscribed += this.Subscription_Subscribed;
             this.subscription.Unsubscribed += this.Subscription_Unsubscribed;

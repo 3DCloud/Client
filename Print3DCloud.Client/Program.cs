@@ -57,20 +57,12 @@ namespace Print3DCloud.Client
                         actionCableClient.AdditionalHeaders.Add(("X-Client-Id", config.ClientId.ToString()));
                         actionCableClient.AdditionalHeaders.Add(("X-Client-Secret", config.Secret));
 
-                        actionCableClient.Disconnected += () => ActionCableClient_Disconnected(actionCableClient);
-
                         return actionCableClient;
                     });
 
                     services.AddSingleton(config);
                     services.AddSingleton<DeviceManager>();
                 });
-        }
-
-        private static async void ActionCableClient_Disconnected(ActionCableClient client)
-        {
-            await Task.Delay(10_000);
-            await client.ConnectAsync(CancellationToken.None);
         }
     }
 }
