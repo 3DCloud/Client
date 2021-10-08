@@ -44,15 +44,25 @@ namespace Print3DCloud.Client.Printers
         public ActionCableSubscription Subscription { get; }
 
         /// <summary>
-        /// Subscribes to the Printer channel with this printer's ID and connects to the printer (if necessary).
+        /// Subscribes to the Printer channel with this printer's ID and connects to the printer.
         /// </summary>
         /// <param name="cancellationToken">A <see cref="CancellationToken"/> used to propagate notification that the operation should be canceled.</param>
         /// <returns>A <see cref="Task"/> that completes once the subscription request has been sent and the printer is connected.</returns>
         public async Task SubscribeAndConnect(CancellationToken cancellationToken)
         {
             await this.Subscription.SubscribeAsync(cancellationToken);
-
             await this.Printer.ConnectAsync(cancellationToken).ConfigureAwait(false);
+        }
+
+        /// <summary>
+        /// Unsubscribes from the Printer channel and disconnects from the printer.
+        /// </summary>
+        /// <param name="cancellationToken">A <see cref="CancellationToken"/> used to propagate notification that the operation should be canceled.</param>
+        /// <returns>A <see cref="Task"/> that completes once the subscription request has been sent and the printer is connected.</returns>
+        public async Task UnsubscribeAndDisconnect(CancellationToken cancellationToken)
+        {
+            await this.Subscription.Unsubscribe(cancellationToken);
+            await this.Printer.DisconnectAsync(cancellationToken);
         }
 
         /// <inheritdoc/>
@@ -86,7 +96,7 @@ namespace Print3DCloud.Client.Printers
         {
             if (this.Printer.State != PrinterState.Disconnected)
             {
-                await this.Printer.DisconnectAsync();
+                await this.Printer.DisconnectAsync(CancellationToken.None);
             }
 
             await this.Printer.ConnectAsync(CancellationToken.None);
@@ -114,7 +124,7 @@ namespace Print3DCloud.Client.Printers
                 await using (Stream contentStream = await response.Content.ReadAsStreamAsync())
                 await using (FileStream writeFileStream = new(path, FileMode.CreateNew, FileAccess.Write))
                 {
-                    contentStream.CopyTo(writeFileStream);
+                    await contentStream.CopyToAsync(writeFileStream);
                 }
             }
 

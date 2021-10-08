@@ -113,7 +113,7 @@ namespace Print3DCloud.Client.Printers.Marlin
             }
             else if (index != -1)
             {
-                command = command.Substring(0, index).TrimEnd();
+                command = command[..index].TrimEnd();
             }
 
             await this.sendCommandSemaphore.WaitAsync(cancellationToken).ConfigureAwait(false);
@@ -229,7 +229,7 @@ namespace Print3DCloud.Client.Printers.Marlin
         }
 
         /// <summary>
-        /// Cleans up managed objects that implement IDiposable (if <paramref name="disposing"/> is true) and unmanaged resources/objects.
+        /// Cleans up managed objects that implement IDisposable (if <paramref name="disposing"/> is true) and unmanaged resources/objects.
         /// </summary>
         /// <param name="disposing">Whether this is being called from a Dispose method or not.</param>
         protected void Dispose(bool disposing)

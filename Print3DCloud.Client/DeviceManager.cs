@@ -153,7 +153,7 @@ namespace Print3DCloud.Client
 
             try
             {
-                await Task.Run(() => printerManager.SubscribeAndConnect(CancellationToken.None));
+                await Task.Run(() => printerManager.SubscribeAndConnect(this.cancellationTokenSource?.Token ?? CancellationToken.None));
 
                 this.logger.LogInformation($"Printer '{hardwareIdentifier}' set up successfully");
             }
@@ -166,14 +166,14 @@ namespace Print3DCloud.Client
 
         private async Task PollDevices(CancellationToken cancellationToken)
         {
-            if (this.subscription?.State != SubscriptionState.Subscribed) return;
+            if (this.subscription.State != SubscriptionState.Subscribed) return;
 
             if (Environment.GetCommandLineArgs().Contains("--dummy-printer"))
             {
                 await this.subscription.PerformAsync(new DeviceMessage("dummy0", this.dummyPrinterId, false), CancellationToken.None).ConfigureAwait(false);
             }
 
-            while (this.subscription?.State == SubscriptionState.Subscribed)
+            while (this.subscription.State == SubscriptionState.Subscribed)
             {
                 cancellationToken.ThrowIfCancellationRequested();
 
@@ -218,16 +218,20 @@ namespace Print3DCloud.Client
 
                 this.logger.LogInformation("Lost device at " + portInfo.PortName);
 
-                if (this.printers.TryGetValue(deviceId, out PrinterController? printerMessageForwarder))
+                if (this.printers.TryGetValue(deviceId, out PrinterController? printerController))
                 {
                     try
                     {
-                        printerMessageForwarder.Dispose();
+                        await printerController.UnsubscribeAndDisconnect(cancellationToken);
                     }
                     catch (Exception ex)
                     {
                         this.logger.LogError("Could not disconnect printer");
                         this.logger.LogError(ex.ToString());
+                    }
+                    finally
+                    {
+                        printerController.Dispose();
                     }
 
                     this.printers.Remove(deviceId);

@@ -204,7 +204,7 @@ namespace Print3DCloud.Client.Tests.Printers.Marlin
         {
             MarlinPrinter printer = await CreateConnectedPrinter();
 
-            Task disconnectTask = printer.DisconnectAsync();
+            Task disconnectTask = printer.DisconnectAsync(CancellationToken.None);
 
             Assert.Equal(PrinterState.Disconnecting, printer.State);
 
@@ -218,13 +218,13 @@ namespace Print3DCloud.Client.Tests.Printers.Marlin
         {
             MarlinPrinter printer = await CreateConnectedPrinter();
 
-            using MemoryStream printStream = new(Encoding.ASCII.GetBytes("G0 X0 Y0"));
+            await using MemoryStream printStream = new(Encoding.ASCII.GetBytes("G0 X0 Y0"));
 
             await printer.StartPrintAsync(printStream, CancellationToken.None);
 
             Assert.Equal(PrinterState.Printing, printer.State);
 
-            await printer.DisconnectAsync();
+            await printer.DisconnectAsync(CancellationToken.None);
 
             Assert.Equal(PrinterState.Disconnected, printer.State);
         }
@@ -247,10 +247,7 @@ namespace Print3DCloud.Client.Tests.Printers.Marlin
 
         private static async Task<MarlinPrinter> CreateConnectedPrinter(SerialPrinterStreamSimulator? sim = null, bool canReportTemperatures = true)
         {
-            if (sim == null)
-            {
-                sim = new();
-            }
+            sim ??= new SerialPrinterStreamSimulator();
 
             Mock<ISerialPort> mock = CreateSerialPort("COM0", 125_000, sim);
 
@@ -274,8 +271,6 @@ namespace Print3DCloud.Client.Tests.Printers.Marlin
             Mock<ISerialPort> serialPortMock = new();
             serialPortMock.SetupGet(p => p.PortName).Returns(portName);
             serialPortMock.SetupGet(p => p.BaudRate).Returns(baudRate);
-            serialPortMock.SetupGet(p => p.DtrEnable).Returns(true);
-            serialPortMock.SetupGet(p => p.RtsEnable).Returns(true);
             serialPortMock.SetupGet(p => p.BaseStream).Returns(baseStream);
 
             return serialPortMock;

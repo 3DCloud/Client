@@ -1,4 +1,5 @@
-﻿using Print3DCloud.Client.Printers;
+﻿using System.IO.Ports;
+using Print3DCloud.Client.Printers;
 using Xunit;
 
 namespace Print3DCloud.Client.Tests.Printers
@@ -12,11 +13,15 @@ namespace Print3DCloud.Client.Tests.Printers
 
             ISerialPort serialPort = serialPortFactory.CreateSerialPort("portname", 123_456);
 
-            Assert.False(serialPort.IsOpen);
-            Assert.Equal("portname", serialPort.PortName);
-            Assert.Equal(123_456, serialPort.BaudRate);
-            Assert.False(serialPort.RtsEnable);
-            Assert.True(serialPort.DtrEnable);
+            Assert.IsType<SerialPortWrapper>(serialPort);
+
+            SerialPortWrapper serialPortWrapper = (SerialPortWrapper)serialPort;
+            Assert.False(serialPortWrapper.IsOpen);
+            Assert.Equal("portname", serialPortWrapper.PortName);
+            Assert.Equal(123_456, serialPortWrapper.BaudRate);
+            Assert.False(serialPortWrapper.RtsEnable);
+            Assert.True(serialPortWrapper.DtrEnable);
+            Assert.Equal(2_000, serialPortWrapper.WriteTimeout);
         }
     }
 }

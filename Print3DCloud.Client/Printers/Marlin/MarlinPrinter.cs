@@ -32,8 +32,9 @@ namespace Print3DCloud.Client.Printers.Marlin
         private readonly string portName;
         private readonly int baudRate;
 
-        private SerialCommandManager? serialCommandProcessor;
-        private CancellationTokenSource? globalCancellationTokenSource;
+        private ISerialPort? serialPort;
+        private SerialCommandManager? serialCommandManager;
+        private CancellationTokenSource? backgroundTaskCancellationTokenSource;
         private CancellationTokenSource? printCancellationTokenSource;
 
         private Task? temperaturePollingTask;
@@ -64,7 +65,7 @@ namespace Print3DCloud.Client.Printers.Marlin
         /// <inheritdoc/>
         public async Task ConnectAsync(CancellationToken cancellationToken)
         {
-            if (this.State != PrinterState.Disconnected)
+            if (this.State is not PrinterState.Disconnecting and not PrinterState.Disconnected)
             {
                 throw new InvalidOperationException("Printer is already connected");
             }
@@ -80,14 +81,14 @@ namespace Print3DCloud.Client.Printers.Marlin
                 {
                     this.logger.LogInformation($"Connecting to Marlin printer at port '{this.portName}'...");
 
-                    ISerialPort serialPort = this.printerStreamFactory.CreateSerialPort(this.portName, this.baudRate);
+                    this.serialPort = this.printerStreamFactory.CreateSerialPort(this.portName, this.baudRate);
 
-                    serialPort.Open();
+                    this.serialPort.Open();
 
-                    serialPort.DiscardInBuffer();
-                    serialPort.DiscardOutBuffer();
+                    this.serialPort.DiscardInBuffer();
+                    this.serialPort.DiscardOutBuffer();
 
-                    serialCommandManager = new SerialCommandManager(this.logger, serialPort.BaseStream, Encoding.UTF8, "\n");
+                    serialCommandManager = new SerialCommandManager(this.logger, this.serialPort.BaseStream, Encoding.UTF8, "\n");
 
                     await serialCommandManager.WaitForStartupAsync(cancellationToken);
 
@@ -105,17 +106,17 @@ namespace Print3DCloud.Client.Printers.Marlin
                 }
             }
 
-            this.serialCommandProcessor = serialCommandManager;
+            this.serialCommandManager = serialCommandManager;
             this.logger.LogInformation("Connected");
 
-            this.globalCancellationTokenSource = new CancellationTokenSource();
+            this.backgroundTaskCancellationTokenSource = new CancellationTokenSource();
 
-            if (!await this.GetPrinterSupportsAutomaticTemperatureReportingAsync(this.serialCommandProcessor, cancellationToken))
+            if (!await this.GetPrinterSupportsAutomaticTemperatureReportingAsync(this.serialCommandManager, cancellationToken))
             {
-                this.temperaturePollingTask = Task.Run(() => this.TemperaturePolling(this.globalCancellationTokenSource.Token), cancellationToken).ContinueWith(t => this.HandleTaskCompletedAsync(t, "Temperature polling"), CancellationToken.None);
+                this.temperaturePollingTask = Task.Run(() => this.TemperaturePolling(this.backgroundTaskCancellationTokenSource.Token), cancellationToken).ContinueWith(t => this.HandleTaskCompletedAsync(t, "Temperature polling"), CancellationToken.None);
             }
 
-            this.receiveLoopTask = Task.Run(() => this.ReceiveLoop(this.globalCancellationTokenSource.Token), cancellationToken).ContinueWith(t => this.HandleTaskCompletedAsync(t, "Receive loop"), CancellationToken.None);
+            this.receiveLoopTask = Task.Run(() => this.ReceiveLoop(this.backgroundTaskCancellationTokenSource.Token), cancellationToken).ContinueWith(t => this.HandleTaskCompletedAsync(t, "Receive loop"), CancellationToken.None);
 
             this.State = PrinterState.Ready;
         }
@@ -123,12 +124,12 @@ namespace Print3DCloud.Client.Printers.Marlin
         /// <inheritdoc/>
         public Task SendCommandAsync(string command, CancellationToken cancellationToken)
         {
-            if (this.serialCommandProcessor == null)
+            if (this.serialCommandManager == null)
             {
-                throw new InvalidOperationException($"Printer isn't connected");
+                throw new InvalidOperationException("Printer isn't connected");
             }
 
-            return this.serialCommandProcessor.SendCommandAsync(command, cancellationToken);
+            return this.serialCommandManager.SendCommandAsync(command, cancellationToken);
         }
 
         /// <inheritdoc/>
@@ -143,19 +144,30 @@ namespace Print3DCloud.Client.Printers.Marlin
         }
 
         /// <inheritdoc/>
-        public async Task DisconnectAsync()
+        public async Task DisconnectAsync(CancellationToken cancellationToken)
         {
+            if (this.State is PrinterState.Disconnecting or PrinterState.Disconnected)
+            {
+                return;
+            }
+
             this.State = PrinterState.Disconnecting;
 
             this.logger.LogDebug("Waiting for all tasks to complete...");
 
-            this.globalCancellationTokenSource?.Cancel();
-            this.globalCancellationTokenSource = null;
+            this.backgroundTaskCancellationTokenSource?.Cancel();
+            this.backgroundTaskCancellationTokenSource = null;
 
-            this.serialCommandProcessor?.Dispose();
-            this.serialCommandProcessor = null;
+            this.printCancellationTokenSource?.Cancel();
+            this.printCancellationTokenSource = null;
 
-            var tasks = new List<Task>(3);
+            this.serialCommandManager?.Dispose();
+            this.serialCommandManager = null;
+
+            this.serialPort?.Close();
+            this.serialPort = null;
+
+            List<Task> tasks = new(3);
 
             if (this.printTask != null) tasks.Add(this.printTask);
             if (this.temperaturePollingTask != null) tasks.Add(this.temperaturePollingTask);
@@ -186,7 +198,7 @@ namespace Print3DCloud.Client.Printers.Marlin
             this.State = PrinterState.Printing;
             this.printCancellationTokenSource = new CancellationTokenSource();
 
-            this.printTask = Task.Run(() => this.RunPrintAsync(stream, this.printCancellationTokenSource.Token).ContinueWith(t => this.HandleTaskCompletedAsync(t, "Print")), cancellationToken);
+            this.printTask = Task.Run(() => this.RunPrintAsync(stream, this.printCancellationTokenSource.Token).ContinueWith(t => this.HandleTaskCompletedAsync(t, "Print"), CancellationToken.None), cancellationToken);
 
             return Task.CompletedTask;
         }
@@ -242,14 +254,14 @@ namespace Print3DCloud.Client.Printers.Marlin
                 this.State = PrinterState.Disconnected;
                 this.Temperatures = null;
 
-                this.serialCommandProcessor?.Dispose();
-                this.serialCommandProcessor = null;
+                this.serialCommandManager?.Dispose();
+                this.serialCommandManager = null;
 
-                if (this.globalCancellationTokenSource != null)
+                if (this.backgroundTaskCancellationTokenSource != null)
                 {
-                    this.globalCancellationTokenSource.Cancel();
-                    this.globalCancellationTokenSource.Dispose();
-                    this.globalCancellationTokenSource = null;
+                    this.backgroundTaskCancellationTokenSource.Cancel();
+                    this.backgroundTaskCancellationTokenSource.Dispose();
+                    this.backgroundTaskCancellationTokenSource = null;
                 }
 
                 if (this.printCancellationTokenSource != null)
@@ -266,14 +278,14 @@ namespace Print3DCloud.Client.Printers.Marlin
             string sensor = match.Groups["sensor"].Value;
             double currentTemperature = double.Parse(match.Groups["current"].Value, CultureInfo.InvariantCulture);
             double targetTemperature = double.Parse(match.Groups["target"].Value, CultureInfo.InvariantCulture);
-            return new(sensor, currentTemperature, targetTemperature);
+            return new TemperatureSensor(sensor, currentTemperature, targetTemperature);
         }
 
-        private async Task<bool> GetPrinterSupportsAutomaticTemperatureReportingAsync(SerialCommandManager serialCommandProcessor, CancellationToken cancellationToken)
+        private async Task<bool> GetPrinterSupportsAutomaticTemperatureReportingAsync(SerialCommandManager serialCommandManager, CancellationToken cancellationToken)
         {
             this.logger.LogTrace("Checking if printer supports automatic temperature reporting");
 
-            Task sendCommandTask = serialCommandProcessor.SendCommandAsync(string.Format(AutomaticTemperatureReportingCommand, TemperatureReportingIntervalSeconds), cancellationToken);
+            Task sendCommandTask = serialCommandManager.SendCommandAsync(string.Format(AutomaticTemperatureReportingCommand, TemperatureReportingIntervalSeconds), cancellationToken);
             MarlinMessage line;
             bool result = true;
 
@@ -281,7 +293,7 @@ namespace Print3DCloud.Client.Printers.Marlin
             {
                 cancellationToken.ThrowIfCancellationRequested();
 
-                line = await serialCommandProcessor.ReceiveLineAsync(cancellationToken);
+                line = await serialCommandManager.ReceiveLineAsync(cancellationToken);
 
                 if (line.Type == MarlinMessageType.UnknownCommand)
                 {
@@ -297,21 +309,29 @@ namespace Print3DCloud.Client.Printers.Marlin
 
         private async Task RunPrintAsync(Stream stream, CancellationToken cancellationToken)
         {
-            // StreamReader takes care of closing the stream properly
-            using var streamReader = new StreamReader(stream);
-
-            while (!streamReader.EndOfStream)
+            try
             {
-                cancellationToken.ThrowIfCancellationRequested();
+                // StreamReader takes care of closing the stream properly
+                using StreamReader streamReader = new(stream);
 
-                string? line = await streamReader.ReadLineAsync().ConfigureAwait(false);
+                while (!streamReader.EndOfStream)
+                {
+                    cancellationToken.ThrowIfCancellationRequested();
 
-                if (string.IsNullOrWhiteSpace(line)) continue;
+                    string? line = await streamReader.ReadLineAsync().ConfigureAwait(false);
 
-                await this.SendCommandAsync(line, cancellationToken).ConfigureAwait(false);
+                    if (string.IsNullOrWhiteSpace(line)) continue;
+
+                    await this.SendCommandAsync(line, cancellationToken).ConfigureAwait(false);
+                }
+
+                this.State = PrinterState.Ready;
             }
-
-            this.State = PrinterState.Ready;
+            catch (Exception ex)
+            {
+                this.logger.LogError(ex.ToString());
+                throw;
+            }
         }
 
         private async Task HandleTaskCompletedAsync(Task task, string name)
@@ -329,24 +349,24 @@ namespace Print3DCloud.Client.Printers.Marlin
                 this.logger.LogError($"{name} task errored");
                 this.logger.LogError(task.Exception!.ToString());
 
-                await this.DisconnectAsync();
+                await this.DisconnectAsync(CancellationToken.None);
             }
         }
 
         private async Task TemperaturePolling(CancellationToken cancellationToken)
         {
-            while (this.serialCommandProcessor != null)
+            while (this.serialCommandManager != null)
             {
-                await this.serialCommandProcessor.SendCommandAsync(ReportTemperaturesCommand, cancellationToken).ConfigureAwait(false);
+                await this.serialCommandManager.SendCommandAsync(ReportTemperaturesCommand, cancellationToken).ConfigureAwait(false);
                 await Task.Delay(TemperatureReportingIntervalSeconds * 1000, cancellationToken).ConfigureAwait(false);
             }
         }
 
         private async Task ReceiveLoop(CancellationToken cancellationToken)
         {
-            while (this.serialCommandProcessor != null)
+            while (this.serialCommandManager != null)
             {
-                MarlinMessage line = await this.serialCommandProcessor.ReceiveLineAsync(cancellationToken).ConfigureAwait(false);
+                MarlinMessage line = await this.serialCommandManager.ReceiveLineAsync(cancellationToken).ConfigureAwait(false);
 
                 if (line.Type != MarlinMessageType.Message)
                 {

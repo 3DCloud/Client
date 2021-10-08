@@ -35,7 +35,9 @@ namespace Print3DCloud.Client.Printers
         /// <inheritdoc/>
         public bool IsOpen => this.serialPort.IsOpen;
 
-        /// <inheritdoc/>
+        /// <summary>
+        /// Gets or sets a value indicating whether the Data Terminal Ready (DTR) signal is enabled during serial communication.
+        /// </summary>
         public bool DtrEnable
         {
             get => this.serialPort.DtrEnable;
@@ -49,11 +51,22 @@ namespace Print3DCloud.Client.Printers
             set => this.serialPort.PortName = value;
         }
 
-        /// <inheritdoc/>
+        /// <summary>
+        /// Gets or sets a value indicating whether the Request to Send (RTS) signal is enabled during serial communication.
+        /// </summary>
         public bool RtsEnable
         {
             get => this.serialPort.RtsEnable;
             set => this.serialPort.RtsEnable = value;
+        }
+
+        /// <summary>
+        /// Gets or sets the number of milliseconds before a time-out occurs when a write operation does not finish.
+        /// </summary>
+        public int WriteTimeout
+        {
+            get => this.serialPort.WriteTimeout;
+            set => this.serialPort.WriteTimeout = value;
         }
 
         /// <inheritdoc/>

@@ -36,8 +36,8 @@ namespace Print3DCloud.Client.Printers
             new TemperatureSensor("T0", 210 + this.random.NextDouble() * 0.5, 210),
             new List<TemperatureSensor>
             {
-                new TemperatureSensor("T0", 210 + this.random.NextDouble() * 0.5, 210),
-                new TemperatureSensor("T1", 190 + this.random.NextDouble() * 0.5, 190),
+                new("T0", 210 + this.random.NextDouble() * 0.5, 210),
+                new("T1", 190 + this.random.NextDouble() * 0.5, 190),
             },
             new TemperatureSensor("B", 60 + this.random.NextDouble() * 0.5, 60));
 
@@ -51,7 +51,7 @@ namespace Print3DCloud.Client.Printers
         }
 
         /// <inheritdoc/>
-        public async Task DisconnectAsync()
+        public async Task DisconnectAsync(CancellationToken cancellationToken)
         {
             if (this.connectedTask != null)
             {

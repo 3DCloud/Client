@@ -14,6 +14,7 @@ namespace Print3DCloud.Client.Printers
             {
                 DtrEnable = true,
                 RtsEnable = false,
+                WriteTimeout = 2_000,
             };
         }
     }
