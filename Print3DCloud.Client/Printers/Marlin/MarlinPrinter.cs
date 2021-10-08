@@ -161,25 +161,19 @@ namespace Print3DCloud.Client.Printers.Marlin
             this.printCancellationTokenSource?.Cancel();
             this.printCancellationTokenSource = null;
 
-            this.serialCommandManager?.Dispose();
-            this.serialCommandManager = null;
-
-            this.serialPort?.Close();
-            this.serialPort = null;
-
             List<Task> tasks = new(3);
 
             if (this.printTask != null) tasks.Add(this.printTask);
             if (this.temperaturePollingTask != null) tasks.Add(this.temperaturePollingTask);
             if (this.receiveLoopTask != null) tasks.Add(this.receiveLoopTask);
 
-            try
-            {
-                await Task.WhenAll(tasks).ConfigureAwait(false);
-            }
-            catch (OperationCanceledException)
-            {
-            }
+            await Task.WhenAll(tasks);
+
+            this.serialCommandManager?.Dispose();
+            this.serialCommandManager = null;
+
+            this.serialPort?.Close();
+            this.serialPort = null;
 
             this.State = PrinterState.Disconnected;
             this.Temperatures = null;

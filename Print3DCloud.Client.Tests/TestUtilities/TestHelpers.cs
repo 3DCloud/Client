@@ -1,6 +1,8 @@
 ﻿using System.Threading;
 using Microsoft.Extensions.Logging;
+using Microsoft.Extensions.Logging.Abstractions;
 using Moq;
+using Xunit.Abstractions;
 
 namespace Print3DCloud.Client.Tests.TestUtilities
 {
@@ -20,11 +22,18 @@ namespace Print3DCloud.Client.Tests.TestUtilities
         /// Create a mock <see cref="ILogger{TCategoryName}"/>.
         /// </summary>
         /// <typeparam name="T">The type whose name is used for the logger category name.</typeparam>
-        /// <returns>A mock <see cref="ILogger{TCategoryName}"/>.</returns>
-        public static Mock<ILogger<T>> CreateLogger<T>()
+        /// <param name="testOutputHelper">The test output helper to which messages should be passed.</param>
+        /// <returns>An instance implementing <see cref="ILogger{TCategoryName}"/>.</returns>
+        public static ILogger<T> CreateLogger<T>(ITestOutputHelper? testOutputHelper)
         {
-            Mock<ILogger<T>> loggerMock = new();
-            return loggerMock;
+            if (testOutputHelper != null)
+            {
+                return new TestOutputLogger<T>(testOutputHelper);
+            }
+            else
+            {
+                return new NullLogger<T>();
+            }
         }
     }
 }
