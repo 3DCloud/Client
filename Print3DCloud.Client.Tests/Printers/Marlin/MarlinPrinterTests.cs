@@ -224,6 +224,8 @@ namespace Print3DCloud.Client.Tests.Printers.Marlin
 
             Assert.Equal(PrinterState.Printing, printer.State);
 
+            await Task.Delay(5);
+
             await printer.DisconnectAsync(CancellationToken.None);
 
             Assert.Equal(PrinterState.Disconnected, printer.State);
