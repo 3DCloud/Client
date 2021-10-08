@@ -17,6 +17,8 @@ namespace ActionCableSharp
         private readonly ActionCableClient client;
         private readonly Dictionary<string, List<Delegate>> callbacks = new();
 
+        private bool disposed;
+
         /// <summary>
         /// Initializes a new instance of the <see cref="ActionCableSubscription"/> class.
         /// </summary>
@@ -72,7 +74,15 @@ namespace ActionCableSharp
         /// <returns>A <see cref="Task"/> that completes once the message has been sent.</returns>
         public Task PerformAsync(ActionMessage data, CancellationToken cancellationToken)
         {
-            if (this.State != SubscriptionState.Subscribed) throw new InvalidOperationException("Not subscribed");
+            if (this.disposed)
+            {
+                throw new ObjectDisposedException(nameof(ActionCableSubscription));
+            }
+
+            if (this.State != SubscriptionState.Subscribed)
+            {
+                throw new InvalidOperationException("Not subscribed");
+            }
 
             return this.client.SendMessageAsync("message", this.Identifier, cancellationToken, data);
         }
@@ -84,6 +94,11 @@ namespace ActionCableSharp
         /// <returns>A <see cref="Task"/> that completes once the subscription request has been sent to the server.</returns>
         public async Task SubscribeAsync(CancellationToken cancellationToken)
         {
+            if (this.disposed)
+            {
+                throw new ObjectDisposedException(nameof(ActionCableSubscription));
+            }
+
             if (this.client.State == ClientState.Connected)
             {
                 await this.client.SendMessageAsync("subscribe", this.Identifier, cancellationToken).ConfigureAwait(false);
@@ -99,6 +114,11 @@ namespace ActionCableSharp
         /// <param name="callback">Callback to call.</param>
         public void RegisterCallback(string actionName, Action callback)
         {
+            if (this.disposed)
+            {
+                throw new ObjectDisposedException(nameof(ActionCableSubscription));
+            }
+
             if (!this.callbacks.ContainsKey(actionName))
             {
                 this.callbacks.Add(actionName, new List<Delegate>());
@@ -115,6 +135,11 @@ namespace ActionCableSharp
         /// <param name="callback">Callback to call.</param>
         public void RegisterCallback<T>(string actionName, Action<T> callback)
         {
+            if (this.disposed)
+            {
+                throw new ObjectDisposedException(nameof(ActionCableSubscription));
+            }
+
             if (!this.callbacks.ContainsKey(actionName))
             {
                 this.callbacks.Add(actionName, new List<Delegate>());
@@ -130,6 +155,11 @@ namespace ActionCableSharp
         /// <returns>A <see cref="Task"/> that completes once the unsubscription request has been sent to the server.</returns>
         public async Task Unsubscribe(CancellationToken cancellationToken)
         {
+            if (this.disposed)
+            {
+                throw new ObjectDisposedException(nameof(ActionCableSubscription));
+            }
+
             if (this.client.State == ClientState.Connected)
             {
                 await this.client.SendMessageAsync("unsubscribe", this.Identifier, cancellationToken).ConfigureAwait(false);
@@ -152,14 +182,16 @@ namespace ActionCableSharp
         /// <param name="disposing">true to release both managed and unmanaged resources; false to release only unmanaged resources.</param>
         protected void Dispose(bool disposing)
         {
+            if (this.disposed)
+            {
+                return;
+            }
+
             if (disposing)
             {
-                if (this.client != null)
-                {
-                    this.client.Connected -= this.Client_Connected;
-                    this.client.Disconnected -= this.Client_Disconnected;
-                    this.client.MessageReceived -= this.Client_MessageReceived;
-                }
+                this.client.Connected -= this.Client_Connected;
+                this.client.Disconnected -= this.Client_Disconnected;
+                this.client.MessageReceived -= this.Client_MessageReceived;
 
                 if (this.State != SubscriptionState.Unsubscribed)
                 {
@@ -169,6 +201,10 @@ namespace ActionCableSharp
 
                 this.callbacks.Clear();
             }
+
+            this.client.RemoveSubscription(this);
+
+            this.disposed = true;
         }
 
         private async void Client_Connected()
@@ -238,7 +274,7 @@ namespace ActionCableSharp
         {
             var bufferWriter = new ArrayBufferWriter<byte>();
 
-            using (var writer = new Utf8JsonWriter(bufferWriter))
+            using (Utf8JsonWriter writer = new(bufferWriter))
             {
                 jsonElement.WriteTo(writer);
             }

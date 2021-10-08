@@ -219,6 +219,15 @@ namespace ActionCableSharp
         }
 
         /// <summary>
+        /// Remove the specified subscription.
+        /// </summary>
+        /// <param name="subscription">The subscription to remove.</param>
+        internal virtual void RemoveSubscription(ActionCableSubscription subscription)
+        {
+            this.subscriptions.Remove(subscription.Identifier);
+        }
+
+        /// <summary>
         /// Enqueue a command to be sent to the server.
         /// </summary>
         /// <param name="command">Name of the command.</param>
