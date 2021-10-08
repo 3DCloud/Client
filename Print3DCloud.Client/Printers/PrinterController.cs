@@ -111,26 +111,38 @@ namespace Print3DCloud.Client.Printers
 
             this.logger.LogInformation($"Starting print {message.PrintId} from file at '{message.DownloadUrl}'");
 
-            string directory = Path.Join(Directory.GetCurrentDirectory(), "tmp");
-            Directory.CreateDirectory(directory);
-
-            string path = Path.Join(directory, Guid.NewGuid().ToString());
-
-            using (HttpClient client = new())
+            try
             {
-                HttpResponseMessage response = await client.GetAsync(message.DownloadUrl);
+                string directory = Path.Join(Directory.GetCurrentDirectory(), "tmp");
+                Directory.CreateDirectory(directory);
 
-                // save to filesystem to reduce memory usage
-                await using (Stream contentStream = await response.Content.ReadAsStreamAsync())
-                await using (FileStream writeFileStream = new(path, FileMode.CreateNew, FileAccess.Write))
+                string path = Path.Join(directory, Guid.NewGuid().ToString());
+
+                using (HttpClient client = new())
                 {
-                    await contentStream.CopyToAsync(writeFileStream);
-                }
-            }
+                    HttpResponseMessage response = await client.GetAsync(message.DownloadUrl);
 
-            // we don't use "using" here since the file is kept open for the duration of the print
-            FileStream fileStream = new(path, FileMode.Open, FileAccess.Read);
-            await this.Printer.StartPrintAsync(fileStream, CancellationToken.None).ConfigureAwait(false);
+                    // save to filesystem to reduce memory usage
+                    await using (Stream contentStream = await response.Content.ReadAsStreamAsync())
+                    await using (FileStream writeFileStream = new(path, FileMode.CreateNew, FileAccess.Write))
+                    {
+                        await contentStream.CopyToAsync(writeFileStream);
+                    }
+                }
+
+                // we don't use "using" here since the file is kept open for the duration of the print
+                FileStream fileStream = new(path, FileMode.Open, FileAccess.Read);
+                await this.Printer.StartPrintAsync(fileStream, CancellationToken.None).ConfigureAwait(false);
+
+                await this.Subscription.PerformAsync(new AcknowledgePrintMessage(), CancellationToken.None);
+            }
+            catch (Exception ex)
+            {
+                this.logger.LogError("Failed to start print");
+                this.logger.LogError(ex.ToString());
+
+                await this.Subscription.PerformAsync(new AcknowledgePrintMessage(ex), CancellationToken.None);
+            }
         }
     }
 }
