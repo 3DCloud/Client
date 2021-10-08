@@ -23,6 +23,7 @@ namespace Print3DCloud.Client.Printers.Marlin
         private const string ReportTemperaturesCommand = "M105";
         private const string AutomaticTemperatureReportingCommand = "M155 S{0}";
         private const int TemperatureReportingIntervalSeconds = 1;
+        private const int MaxConnectRetries = 5;
 
         private static readonly Regex TemperaturesRegex = new(@"(?<sensor>B|T\d?):(?<current>[\d\.]+) \/(?<target>[\d\.]+)");
 
@@ -70,20 +71,41 @@ namespace Print3DCloud.Client.Printers.Marlin
 
             this.State = PrinterState.Connecting;
 
-            this.logger.LogInformation($"Connecting to Marlin printer at port '{this.portName}'...");
+            SerialCommandManager serialCommandManager;
+            int tries = 0;
 
-            ISerialPort serialPort = this.printerStreamFactory.CreateSerialPort(this.portName, this.baudRate);
+            while (true)
+            {
+                try
+                {
+                    this.logger.LogInformation($"Connecting to Marlin printer at port '{this.portName}'...");
 
-            serialPort.Open();
+                    ISerialPort serialPort = this.printerStreamFactory.CreateSerialPort(this.portName, this.baudRate);
 
-            serialPort.DiscardInBuffer();
-            serialPort.DiscardOutBuffer();
+                    serialPort.Open();
 
-            this.serialCommandProcessor = new SerialCommandManager(this.logger, serialPort.BaseStream, Encoding.UTF8, "\n");
-            this.globalCancellationTokenSource = new CancellationTokenSource();
+                    serialPort.DiscardInBuffer();
+                    serialPort.DiscardOutBuffer();
 
-            await this.serialCommandProcessor.WaitForStartupAsync(cancellationToken);
+                    serialCommandManager = new SerialCommandManager(this.logger, serialPort.BaseStream, Encoding.UTF8, "\n");
 
+                    await serialCommandManager.WaitForStartupAsync(cancellationToken);
+
+                    break;
+                }
+                catch (Exception ex)
+                {
+                    this.logger.LogError("Failed to connect to printer");
+                    this.logger.LogError(ex.ToString());
+
+                    if (++tries > MaxConnectRetries)
+                    {
+                        throw;
+                    }
+                }
+            }
+
+            this.serialCommandProcessor = serialCommandManager;
             this.logger.LogInformation("Connected");
 
             this.globalCancellationTokenSource = new CancellationTokenSource();
