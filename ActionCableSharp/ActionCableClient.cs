@@ -387,6 +387,8 @@ namespace ActionCableSharp
                 }
             }
             while (this.webSocket?.IsConnected != true);
+
+            this.connecting = false;
         }
 
         private async Task ReceiveLoop(CancellationToken cancellationToken)
@@ -451,7 +453,7 @@ namespace ActionCableSharp
 
             await this.DisconnectAsync(CancellationToken.None);
 
-            if (this.shouldReconnectAfterClose || (task.IsFaulted && task.Exception!.InnerExceptions.Any(ex => ex is WebSocketException)))
+            if (this.shouldReconnectAfterClose || task.Exception?.InnerExceptions.Any(ex => ex is WebSocketException) == true)
             {
                 await this.ReconnectAsync(CancellationToken.None).ConfigureAwait(false);
             }
