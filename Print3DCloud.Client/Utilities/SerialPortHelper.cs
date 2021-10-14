@@ -1,5 +1,6 @@
 ﻿using System;
 using System.Collections.Generic;
+using System.IO;
 using System.Linq;
 using System.Management;
 using System.Runtime.Versioning;
@@ -76,10 +77,75 @@ namespace Print3DCloud.Client
             return portInfos;
         }
 
+        /// <summary>
+        /// Gets serial ports on Linux-based systems.
+        /// Based on https://github.com/pyserial/pyserial/blob/master/serial/tools/list_ports_linux.py
+        /// </summary>
+        /// <returns>A list of <see cref="SerialPortInfo"/>.</returns>
         [SupportedOSPlatform("linux")]
         private static List<SerialPortInfo> GetPorts_Linux()
         {
-            return new List<SerialPortInfo>();
+            List<SerialPortInfo> portInfos = new();
+
+            foreach (string path in Enumerable.Concat(
+                Directory.EnumerateFiles("/dev", "ttyUSB*"),
+                Directory.EnumerateFiles("/dev", "ttyACM*")))
+            {
+                string deviceName = Path.GetFileName(path);
+                string ttyPath = Path.Join("/sys/class/tty", deviceName);
+
+                if (!Directory.Exists(ttyPath))
+                {
+                    continue;
+                }
+
+                string realTtyPath = Directory.ResolveLinkTarget(ttyPath, true)!.FullName;
+                string realDevicePath = Directory.ResolveLinkTarget(Path.Join(realTtyPath, "device"), true)!.FullName;
+                string subsystem = Directory.ResolveLinkTarget(Path.Join(realDevicePath, "subsystem"), true)!.Name;
+                string usbInterfacePath;
+
+                switch (subsystem)
+                {
+                    case "usb":
+                        usbInterfacePath = realDevicePath;
+                        break;
+
+                    case "usb-serial":
+                        usbInterfacePath = Path.GetDirectoryName(realDevicePath)!;
+                        break;
+
+                    default:
+                        continue;
+                }
+
+                usbInterfacePath = Path.GetDirectoryName(usbInterfacePath)!;
+                string serialPath = Path.Join(usbInterfacePath, "serial");
+                string hardwareIdentifier;
+                bool isUniqueHardwareIdentifier;
+
+                if (File.Exists(serialPath))
+                {
+                    hardwareIdentifier = File.ReadAllText(serialPath).Trim();
+                    isUniqueHardwareIdentifier = true;
+                }
+                else
+                {
+                    // trim /sys/devices/
+                    hardwareIdentifier = usbInterfacePath[13..];
+                    isUniqueHardwareIdentifier = false;
+                }
+
+                portInfos.Add(new SerialPortInfo
+                {
+                    PortName = path,
+                    UniqueId = hardwareIdentifier,
+                    IsPortableUniqueId = isUniqueHardwareIdentifier,
+                    ProductId = File.ReadAllText(Path.Join(usbInterfacePath, "idProduct")),
+                    VendorId = File.ReadAllText(Path.Join(usbInterfacePath, "idVendor")),
+                });
+            }
+
+            return portInfos;
         }
     }
 }
