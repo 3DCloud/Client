@@ -17,10 +17,11 @@ jobs:
     - name: Setup .NET
       uses: actions/setup-dotnet@v1
       with:
-        dotnet-version: 5.0.x
+        dotnet-version: 6.0.x
+        include-prerelease: true
 
     - name: Build
-      run: dotnet build Print3DCloud.Client/Print3DCloud.Client.csproj --runtime win-x64
+      run: dotnet build Print3DCloud.Client/Print3DCloud.Client.csproj --runtime win-x64 --no-self-contained
 
   build-linux-x64:
     runs-on: ubuntu-latest
@@ -32,10 +33,11 @@ jobs:
     - name: Setup .NET
       uses: actions/setup-dotnet@v1
       with:
-        dotnet-version: 5.0.x
+        dotnet-version: 6.0.x
+        include-prerelease: true
 
     - name: Build
-      run: dotnet build Print3DCloud.Client/Print3DCloud.Client.csproj --runtime linux-x64
+      run: dotnet build Print3DCloud.Client/Print3DCloud.Client.csproj --runtime linux-x64 --no-self-contained
       
   build-linux-arm:
     runs-on: ubuntu-latest
@@ -47,10 +49,11 @@ jobs:
     - name: Setup .NET
       uses: actions/setup-dotnet@v1
       with:
-        dotnet-version: 5.0.x
+        dotnet-version: 6.0.x
+        include-prerelease: true
 
     - name: Build
-      run: dotnet build Print3DCloud.Client/Print3DCloud.Client.csproj --runtime linux-arm
+      run: dotnet build Print3DCloud.Client/Print3DCloud.Client.csproj --runtime linux-arm --no-self-contained
 
   test:
     runs-on: ubuntu-latest
@@ -66,7 +69,8 @@ jobs:
     - name: Setup .NET
       uses: actions/setup-dotnet@v1
       with:
-        dotnet-version: 5.0.x
+        dotnet-version: 6.0.x
+        include-prerelease: true
 
     - name: Run ActionCableSharp tests
       working-directory: ActionCableSharp.Tests

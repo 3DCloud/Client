@@ -79,7 +79,7 @@ namespace Print3DCloud.Client
 
         /// <summary>
         /// Gets serial ports on Linux-based systems.
-        /// Based on https://github.com/pyserial/pyserial/blob/master/serial/tools/list_ports_linux.py
+        /// Based on https://github.com/pyserial/pyserial/blob/master/serial/tools/list_ports_linux.py.
         /// </summary>
         /// <returns>A list of <see cref="SerialPortInfo"/>.</returns>
         [SupportedOSPlatform("linux")]
