@@ -14,7 +14,13 @@ If you don't have Visual Studio already, download [Visual Studio 2022 Community]
 
 You must also download the [.NET 6 SDK](https://dotnet.microsoft.com/download/dotnet/6.0) (currently in preview).
 
-You should then be able to open the `Print3DCloud.sln` solution in Visual Studio and simply build and run the project.
+You should then be able to open the `Print3DCloud.sln` solution in Visual Studio and build the project. Before running, create a file called `config.json` in the build output folder with the following contents:
+
+```json
+{
+  "ServerHost": "ip address/domain name and port of the server"
+}
+```
 
 ### Generating test coverage locally
 The `generate-coverage-report.ps1` PowerShell script can be used to generate an HTML coverage report locally. You can download PowerShell (cross-platform) [from the latest GitHub release](https://github.com/PowerShell/PowerShell/releases/latest). The script will install [ReportGenerator](https://github.com/danielpalme/ReportGenerator) as a global .NET tool if you do not have it already.
