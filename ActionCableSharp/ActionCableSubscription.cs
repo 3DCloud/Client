@@ -23,7 +23,7 @@ namespace ActionCableSharp
         /// Initializes a new instance of the <see cref="ActionCableSubscription"/> class.
         /// </summary>
         /// <param name="client">The <see cref="ActionCableClient"/> instance to which this subscription belongs.</param>
-        /// <param name="identifier">The <see cref="Identifier"/> used to identifiy this subscription when communicating with the server.</param>
+        /// <param name="identifier">The <see cref="Identifier"/> used to identify this subscription when communicating with the server.</param>
         internal ActionCableSubscription(ActionCableClient client, Identifier identifier)
         {
             this.Identifier = identifier;
@@ -57,7 +57,7 @@ namespace ActionCableSharp
         public event Action<JsonElement>? Received;
 
         /// <summary>
-        /// Gets the <see cref="Identifier"/> used to identifiy this subscription when communicating with the server.
+        /// Gets the <see cref="Identifier"/> used to identify this subscription when communicating with the server.
         /// </summary>
         public Identifier Identifier { get; }
 
@@ -165,8 +165,11 @@ namespace ActionCableSharp
                 await this.client.SendMessageAsync("unsubscribe", this.Identifier, cancellationToken).ConfigureAwait(false);
             }
 
-            this.State = SubscriptionState.Unsubscribed;
-            this.Unsubscribed?.Invoke();
+            if (this.State == SubscriptionState.Subscribed)
+            {
+                this.State = SubscriptionState.Unsubscribed;
+                this.Unsubscribed?.Invoke();
+            }
         }
 
         /// <inheritdoc/>
@@ -212,7 +215,7 @@ namespace ActionCableSharp
             await this.SubscribeAsync(CancellationToken.None);
         }
 
-        private async void Client_Disconnected()
+        private async void Client_Disconnected(bool isReconnecting)
         {
             await this.Unsubscribe(CancellationToken.None);
         }
@@ -261,7 +264,7 @@ namespace ActionCableSharp
                 if (parameterTypes.Length == 1)
                 {
                     Type deserializeToType = del.Method.GetParameters()[0].ParameterType;
-                    del.Method.Invoke(del.Target, new object?[] { this.ConvertToObject(message, deserializeToType) });
+                    del.Method.Invoke(del.Target, new[] { this.ConvertToObject(message, deserializeToType) });
                 }
                 else
                 {

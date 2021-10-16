@@ -21,7 +21,7 @@ namespace Print3DCloud.Client
         /// <returns>A <see cref="Task"/>.</returns>
         private static async Task Main(string[] args)
         {
-            var config = await Config.LoadAsync(CancellationToken.None).ConfigureAwait(false);
+            Config config = await Config.LoadAsync(CancellationToken.None).ConfigureAwait(false);
 
             using IHost host = CreateHostBuilder(args, config).Build();
             IServiceProvider services = host.Services;
@@ -34,11 +34,8 @@ namespace Print3DCloud.Client
                 return;
             }
 
-            await services.GetRequiredService<ActionCableClient>().ConnectAsync(CancellationToken.None).ConfigureAwait(false);
             await services.GetRequiredService<DeviceManager>().StartAsync(CancellationToken.None).ConfigureAwait(false);
-
             await host.RunAsync();
-
             await config.SaveAsync(CancellationToken.None);
         }
 
@@ -51,11 +48,11 @@ namespace Print3DCloud.Client
 
                     services.AddSingleton((serviceProvider) =>
                     {
-                        var config = serviceProvider.GetRequiredService<Config>();
-                        var actionCableClient = new ActionCableClient(serviceProvider.GetRequiredService<ILogger<ActionCableClient>>(), new Uri($"ws://{config.ServerHost}/cable"), "3DCloud-Client");
+                        Config resolvedConfig = serviceProvider.GetRequiredService<Config>();
+                        ActionCableClient actionCableClient = new(serviceProvider.GetRequiredService<ILogger<ActionCableClient>>(), new Uri($"ws://{resolvedConfig.ServerHost}/cable"), "3DCloud-Client");
 
-                        actionCableClient.AdditionalHeaders.Add(("X-Client-Id", config.ClientId.ToString()));
-                        actionCableClient.AdditionalHeaders.Add(("X-Client-Secret", config.Secret));
+                        actionCableClient.AdditionalHeaders.Add(("X-Client-Id", resolvedConfig.ClientId.ToString()));
+                        actionCableClient.AdditionalHeaders.Add(("X-Client-Secret", resolvedConfig.Secret));
 
                         return actionCableClient;
                     });

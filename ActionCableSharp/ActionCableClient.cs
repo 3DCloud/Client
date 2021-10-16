@@ -81,7 +81,7 @@ namespace ActionCableSharp
             this.Uri = uri;
             this.Origin = origin;
 
-            var namingPolicy = new SnakeCaseNamingPolicy();
+            SnakeCaseNamingPolicy namingPolicy = new();
 
             this.JsonSerializerOptions = new JsonSerializerOptions
             {
@@ -98,19 +98,36 @@ namespace ActionCableSharp
         }
 
         /// <summary>
+        /// Represents a method that will handle the <see cref="Connected"/> event.
+        /// </summary>
+        public delegate void ConnectedHandler();
+
+        /// <summary>
+        /// Represents a method that will handle the <see cref="Disconnected"/> event.
+        /// </summary>
+        /// <param name="willReconnect">Indicates whether the client will attempt to reconnect or not.</param>
+        public delegate void DisconnectedHandler(bool willReconnect);
+
+        /// <summary>
+        /// Represents a method that will handle the <see cref="MessageReceived"/> event.
+        /// </summary>
+        /// <param name="message">The raw received message.</param>
+        internal delegate void MessageReceivedHandler(ActionCableIncomingMessage message);
+
+        /// <summary>
         /// Event invoked when the client connects successfully to the server.
         /// </summary>
-        public event Action? Connected;
+        public event ConnectedHandler? Connected;
 
         /// <summary>
         /// Event invoked when the client disconnects from the server.
         /// </summary>
-        public event Action? Disconnected;
+        public event DisconnectedHandler? Disconnected;
 
         /// <summary>
         /// Event invoked when a subscription-bound message is received.
         /// </summary>
-        internal virtual event Action<ActionCableIncomingMessage>? MessageReceived;
+        internal virtual event MessageReceivedHandler? MessageReceived;
 
         /// <summary>
         /// Gets the URI to Action Cable mount path.
@@ -156,38 +173,9 @@ namespace ActionCableSharp
         /// </summary>
         /// <param name="cancellationToken">A <see cref="CancellationToken"/> used to propagate notification that the operation should be canceled.</param>
         /// <returns>A <see cref="Task"/> that completes once the client is disconnected.</returns>
-        public virtual async Task DisconnectAsync(CancellationToken cancellationToken)
+        public virtual Task DisconnectAsync(CancellationToken cancellationToken)
         {
-            if (this.disposed)
-            {
-                throw new ObjectDisposedException(nameof(ActionCableClient));
-            }
-
-            if (this.State is ClientState.Disconnecting or ClientState.Disconnected)
-            {
-                throw new InvalidOperationException("Client isn't connected");
-            }
-
-            this.State = ClientState.Disconnecting;
-
-            if (this.webSocket is { IsConnected: true })
-            {
-                await this.webSocket.CloseAsync(WebSocketCloseStatus.NormalClosure, "Closed by client", cancellationToken).ConfigureAwait(false);
-            }
-
-            if (this.receiveLoopTask != null)
-            {
-                try
-                {
-                    await this.receiveLoopTask;
-                }
-                catch (OperationCanceledException)
-                {
-                }
-            }
-
-            this.State = ClientState.Disconnected;
-            this.Disconnected?.Invoke();
+            return this.DisconnectAsyncInternal(false, cancellationToken);
         }
 
         /// <summary>
@@ -256,16 +244,25 @@ namespace ActionCableSharp
             stream.Position = 0;
 
             byte[] buffer = new byte[BufferSize];
-            int bytesRead;
 
             await this.sendMessageSemaphore.WaitAsync(cancellationToken).ConfigureAwait(false);
 
-            while ((bytesRead = await stream.ReadAsync(buffer, cancellationToken).ConfigureAwait(false)) > 0)
+            try
             {
-                await this.webSocket.SendAsync(new ArraySegment<byte>(buffer, 0, bytesRead), WebSocketMessageType.Text, stream.Position >= stream.Length - 1, cancellationToken).ConfigureAwait(false);
+                int bytesRead;
+                while ((bytesRead = await stream.ReadAsync(buffer, cancellationToken).ConfigureAwait(false)) > 0)
+                {
+                    await this.webSocket.SendAsync(
+                            new ArraySegment<byte>(buffer, 0, bytesRead),
+                            WebSocketMessageType.Text,
+                            stream.Position >= stream.Length - 1,
+                            cancellationToken).ConfigureAwait(false);
+                }
             }
-
-            this.sendMessageSemaphore.Release();
+            finally
+            {
+                this.sendMessageSemaphore.Release();
+            }
         }
 
         /// <summary>
@@ -281,7 +278,7 @@ namespace ActionCableSharp
             }
 
             await using MemoryStream stream = new();
-            var buffer = new byte[BufferSize];
+            byte[] buffer = new byte[BufferSize];
             WebSocketReceiveResult result;
 
             do
@@ -319,7 +316,7 @@ namespace ActionCableSharp
                     finally
                     {
                         this.State = ClientState.Disconnected;
-                        this.Disconnected?.Invoke();
+                        this.Disconnected?.Invoke(false);
                     }
 
                     break;
@@ -342,9 +339,43 @@ namespace ActionCableSharp
             }
 
             this.State = ClientState.Disconnected;
-            this.Disconnected?.Invoke();
+            this.Disconnected?.Invoke(false);
 
             this.disposed = true;
+        }
+
+        private async Task DisconnectAsyncInternal(bool willReconnect, CancellationToken cancellationToken)
+        {
+            if (this.disposed)
+            {
+                throw new ObjectDisposedException(nameof(ActionCableClient));
+            }
+
+            if (this.State is ClientState.Disconnecting or ClientState.Disconnected)
+            {
+                throw new InvalidOperationException("Client isn't connected");
+            }
+
+            this.State = ClientState.Disconnecting;
+
+            if (this.webSocket is { IsConnected: true })
+            {
+                await this.webSocket.CloseAsync(WebSocketCloseStatus.NormalClosure, "Closed by client", cancellationToken).ConfigureAwait(false);
+            }
+
+            if (this.receiveLoopTask != null)
+            {
+                try
+                {
+                    await this.receiveLoopTask;
+                }
+                catch (OperationCanceledException)
+                {
+                }
+            }
+
+            this.State = ClientState.Disconnected;
+            this.Disconnected?.Invoke(willReconnect);
         }
 
         private async Task ReconnectAsync(CancellationToken cancellationToken)
@@ -375,7 +406,7 @@ namespace ActionCableSharp
 
                     await this.webSocket.ConnectAsync(this.Uri, cancellationToken).ConfigureAwait(false);
 
-                    this.logger.LogInformation($"Connected to {this.Uri}");
+                    this.logger.LogInformation("Connected to {uri}", this.Uri);
 
                     this.State = ClientState.WaitingForWelcome;
 
@@ -424,7 +455,7 @@ namespace ActionCableSharp
                 case MessageType.Disconnect:
                     if (!string.IsNullOrWhiteSpace(message.Reason))
                     {
-                        this.logger.LogInformation("Server requested disconnect; reason: " + message.Reason);
+                        this.logger.LogInformation("Server requested disconnect; reason: {reason}", message.Reason);
                     }
                     else
                     {
@@ -452,7 +483,7 @@ namespace ActionCableSharp
             }
             else if (task.IsFaulted)
             {
-                this.logger.LogError($"Incoming message task errored");
+                this.logger.LogError("Incoming message task errored");
                 this.logger.LogError(task.Exception!.ToString());
             }
             else if (task.IsCanceled)
@@ -460,9 +491,12 @@ namespace ActionCableSharp
                 this.logger.LogWarning($"Incoming message task canceled");
             }
 
-            await this.DisconnectAsync(CancellationToken.None);
+            bool reconnect = this.shouldReconnectAfterClose ||
+                             task.Exception?.InnerExceptions.Any(ex => ex is WebSocketException) == true;
 
-            if (this.shouldReconnectAfterClose || task.Exception?.InnerExceptions.Any(ex => ex is WebSocketException) == true)
+            await this.DisconnectAsyncInternal(reconnect, CancellationToken.None);
+
+            if (reconnect)
             {
                 await this.ReconnectAsync(CancellationToken.None).ConfigureAwait(false);
             }

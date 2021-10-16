@@ -22,6 +22,7 @@ namespace Print3DCloud.Client
     {
         private const string PrinterConfigurationActionName = "printer_configuration";
         private const int ScanDevicesIntervalMs = 1_000;
+        private const int RetryConnectionDelayMs = 10_000;
 
         private readonly ILogger<DeviceManager> logger;
         private readonly IServiceProvider serviceProvider;
@@ -32,6 +33,7 @@ namespace Print3DCloud.Client
         private readonly ActionCableSubscription subscription;
         private readonly Dictionary<string, SerialPortInfo> discoveredSerialDevices = new();
         private readonly Dictionary<string, PrinterController> printers = new();
+        private readonly Random random = new();
 
         private CancellationTokenSource? cancellationTokenSource;
 
@@ -50,6 +52,8 @@ namespace Print3DCloud.Client
             this.actionCableClient = actionCableClient;
             this.hostApplicationLifetime = hostApplicationLifetime;
 
+            this.actionCableClient.Disconnected += this.ActionCableClient_Disconnected;
+
             this.dummyPrinterId = $"{config.ClientId}_dummy";
             this.subscription = this.actionCableClient.GetSubscription(new ClientIdentifier(config.ClientId, config.Secret));
 
@@ -64,14 +68,15 @@ namespace Print3DCloud.Client
         /// </summary>
         /// <param name="cancellationToken">A <see cref="CancellationToken"/> used to propagate notification that the operation should be canceled.</param>
         /// <returns>A <see cref="Task"/> that completes once the device manager has started looking for devices.</returns>
-        public Task StartAsync(CancellationToken cancellationToken)
+        public async Task StartAsync(CancellationToken cancellationToken)
         {
-            return this.subscription.SubscribeAsync(cancellationToken);
+            await this.actionCableClient.ConnectAsync(cancellationToken);
+            await this.subscription.SubscribeAsync(cancellationToken);
         }
 
         private async void Subscription_Subscribed()
         {
-            this.logger.LogInformation("Subscribed!");
+            this.logger.LogInformation("Subscribed to client channel");
 
             this.cancellationTokenSource = CancellationTokenSource.CreateLinkedTokenSource(this.hostApplicationLifetime.ApplicationStopping);
 
@@ -97,7 +102,7 @@ namespace Print3DCloud.Client
 
         private void Subscription_Unsubscribed()
         {
-            this.logger.LogInformation("Unsubscribed!");
+            this.logger.LogInformation("Unsubscribed from client channel");
             this.cancellationTokenSource?.Cancel();
         }
 
@@ -113,13 +118,13 @@ namespace Print3DCloud.Client
 
             if (this.printers.TryGetValue(hardwareIdentifier, out PrinterController? printerManager))
             {
-                this.logger.LogInformation($"Printer '{hardwareIdentifier}' is already connected");
+                this.logger.LogInformation("Printer '{hardwareIdentifier}' is already connected", hardwareIdentifier);
                 return;
             }
 
             IPrinter printer;
 
-            this.logger.LogInformation($"Attempting to set up printer '{hardwareIdentifier}'");
+            this.logger.LogInformation("Attempting to set up printer '{hardwareIdentifier}'", hardwareIdentifier);
 
             if (hardwareIdentifier == this.dummyPrinterId)
             {
@@ -209,7 +214,7 @@ namespace Print3DCloud.Client
                 }
             }
 
-            var devicesToRemove = new List<string>();
+            List<string> devicesToRemove = new();
 
             // check for lost devices
             foreach ((string deviceId, SerialPortInfo portInfo) in this.discoveredSerialDevices)
@@ -267,6 +272,19 @@ namespace Print3DCloud.Client
                 this.logger.LogError("Failed to report printer states");
                 this.logger.LogError(ex.ToString());
             }
+        }
+
+        private async void ActionCableClient_Disconnected(bool willReconnect)
+        {
+            if (willReconnect)
+            {
+                return;
+            }
+
+            this.logger.LogInformation("Cable connection lost, attempting to reconnect in {RetryConnectionDelayMs} ms", RetryConnectionDelayMs);
+
+            await Task.Delay(this.random.Next((int)(RetryConnectionDelayMs * 0.8), (int)(RetryConnectionDelayMs * 1.2)));
+            await this.actionCableClient.ConnectAsync(CancellationToken.None);
         }
     }
 }
