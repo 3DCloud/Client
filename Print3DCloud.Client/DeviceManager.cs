@@ -128,7 +128,7 @@ namespace Print3DCloud.Client
 
             if (hardwareIdentifier == this.dummyPrinterId)
             {
-                printer = new DummyPrinter(this.serviceProvider.GetRequiredService<ILogger<DummyPrinter>>());
+                printer = ActivatorUtilities.CreateInstance<DummyPrinter>(this.serviceProvider);
             }
             else if (this.discoveredSerialDevices.TryGetValue(hardwareIdentifier, out SerialPortInfo portInfo))
             {
@@ -137,7 +137,10 @@ namespace Print3DCloud.Client
                 switch (driver)
                 {
                     case MarlinPrinter.DriverId:
-                        printer = new MarlinPrinter(new SerialPortFactory(), this.serviceProvider.GetRequiredService<ILogger<MarlinPrinter>>(), portInfo.PortName);
+                        printer = ActivatorUtilities.CreateInstance<MarlinPrinter>(
+                            this.serviceProvider,
+                            new SerialPortFactory(),
+                            portInfo.PortName);
                         break;
 
                     default:
@@ -153,7 +156,7 @@ namespace Print3DCloud.Client
 
             ActionCableSubscription subscription = this.actionCableClient.GetSubscription(new PrinterIdentifier(hardwareIdentifier));
 
-            printerManager = new PrinterController(printer, subscription, this.serviceProvider.GetRequiredService<ILogger<PrinterController>>());
+            printerManager = ActivatorUtilities.CreateInstance<PrinterController>(this.serviceProvider, printer, subscription);
             this.printers.Add(hardwareIdentifier, printerManager);
 
             try

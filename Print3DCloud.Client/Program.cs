@@ -23,6 +23,8 @@ namespace Print3DCloud.Client
         {
             Config config = await Config.LoadAsync(CancellationToken.None).ConfigureAwait(false);
 
+            await config.SaveAsync(CancellationToken.None);
+
             using IHost host = CreateHostBuilder(args, config).Build();
             IServiceProvider services = host.Services;
 
