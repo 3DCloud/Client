@@ -1,4 +1,5 @@
 ﻿using System;
+using System.Collections.Generic;
 using System.IO;
 using System.Text;
 using System.Threading;
@@ -249,13 +250,13 @@ namespace Print3DCloud.Client.Printers.Marlin
         /// </summary>
         /// <param name="data">The command for which to generate a checksum.</param>
         /// <returns>The command's checksum.</returns>
-        private static byte GetCommandChecksum(byte[] data)
+        private static byte GetCommandChecksum(IEnumerable<byte> data)
         {
             byte checksum = 0;
 
-            for (int i = 0; i < data.Length; i++)
+            foreach (byte b in data)
             {
-                checksum ^= data[i];
+                checksum ^= b;
             }
 
             return checksum;
@@ -263,10 +264,10 @@ namespace Print3DCloud.Client.Printers.Marlin
 
         private byte[] BuildCommand(string command)
         {
-            byte[] commandBytes = this.encoding.GetBytes($"N" + this.currentLineNumber + " " + command);
+            byte[] commandBytes = this.encoding.GetBytes("N" + this.currentLineNumber + " " + command);
 
             byte checksum = GetCommandChecksum(commandBytes);
-            byte[] checksumBytes = this.encoding.GetBytes($"*" + checksum + this.newLine);
+            byte[] checksumBytes = this.encoding.GetBytes("*" + checksum + this.newLine);
 
             byte[] fullCommandBytes = new byte[commandBytes.Length + checksumBytes.Length];
             commandBytes.CopyTo(fullCommandBytes, 0);

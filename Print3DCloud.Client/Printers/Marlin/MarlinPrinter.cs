@@ -21,10 +21,12 @@ namespace Print3DCloud.Client.Printers.Marlin
         public const string DriverId = "marlin";
 
         private const string ReportTemperaturesCommand = "M105";
+        private const string FirmwareInfoCommand = "M115";
         private const string AutomaticTemperatureReportingCommand = "M155 S{0}";
         private const int TemperatureReportingIntervalSeconds = 1;
         private const int MaxConnectRetries = 5;
 
+        private static readonly Regex FirmwareInfoRegex = new(@"^FIRMWARE_NAME:(?<firmware_name>.*) SOURCE_CODE_URL:.* PROTOCOL_VERSION:.* MACHINE_TYPE:.* EXTRUDER_COUNT:(?<extruder_count>\d+) UUID:(?<uuid>.*)$");
         private static readonly Regex TemperaturesRegex = new(@"(?<sensor>B|T\d?):(?<current>[\d\.]+) \/(?<target>[\d\.]+)");
 
         private readonly ISerialPortFactory printerStreamFactory;
@@ -111,12 +113,19 @@ namespace Print3DCloud.Client.Printers.Marlin
 
             this.backgroundTaskCancellationTokenSource = new CancellationTokenSource();
 
-            if (!await this.GetPrinterSupportsAutomaticTemperatureReportingAsync(this.serialCommandManager, cancellationToken))
+            MarlinFirmwareInfo firmwareInfo =
+                await this.GetFirmwareInfoAsync(this.serialCommandManager, cancellationToken);
+
+            this.receiveLoopTask = Task.Run(() => this.ReceiveLoop(this.backgroundTaskCancellationTokenSource.Token), cancellationToken).ContinueWith(t => this.HandleTaskCompletedAsync(t, "Receive loop"), CancellationToken.None);
+
+            if (firmwareInfo.CanAutoReportTemperatures)
+            {
+                await this.SendCommandAsync(string.Format(AutomaticTemperatureReportingCommand, TemperatureReportingIntervalSeconds), cancellationToken);
+            }
+            else
             {
                 this.temperaturePollingTask = Task.Run(() => this.TemperaturePolling(this.backgroundTaskCancellationTokenSource.Token), cancellationToken).ContinueWith(t => this.HandleTaskCompletedAsync(t, "Temperature polling"), CancellationToken.None);
             }
-
-            this.receiveLoopTask = Task.Run(() => this.ReceiveLoop(this.backgroundTaskCancellationTokenSource.Token), cancellationToken).ContinueWith(t => this.HandleTaskCompletedAsync(t, "Receive loop"), CancellationToken.None);
 
             this.State = PrinterState.Ready;
         }
@@ -275,30 +284,57 @@ namespace Print3DCloud.Client.Printers.Marlin
             return new TemperatureSensor(sensor, currentTemperature, targetTemperature);
         }
 
-        private async Task<bool> GetPrinterSupportsAutomaticTemperatureReportingAsync(SerialCommandManager serialCommandManager, CancellationToken cancellationToken)
+        private async Task<MarlinFirmwareInfo> GetFirmwareInfoAsync(SerialCommandManager serialCommandManager, CancellationToken cancellationToken)
         {
-            this.logger.LogTrace("Checking if printer supports automatic temperature reporting");
+            this.logger.LogTrace("Getting firmware information");
 
-            Task sendCommandTask = serialCommandManager.SendCommandAsync(string.Format(AutomaticTemperatureReportingCommand, TemperatureReportingIntervalSeconds), cancellationToken);
-            MarlinMessage line;
-            bool result = true;
+            Task sendCommandTask = serialCommandManager.SendCommandAsync(FirmwareInfoCommand, cancellationToken);
+            MarlinMessage message;
+            MarlinFirmwareInfo info = new();
 
             do
             {
                 cancellationToken.ThrowIfCancellationRequested();
 
-                line = await serialCommandManager.ReceiveLineAsync(cancellationToken);
+                message = await serialCommandManager.ReceiveLineAsync(cancellationToken);
 
-                if (line.Type == MarlinMessageType.UnknownCommand)
+                if (message.Type != MarlinMessageType.Message)
                 {
-                    result = false;
+                    continue;
+                }
+
+                if (message.Content.StartsWith("FIRMWARE_NAME"))
+                {
+                    Match match = FirmwareInfoRegex.Match(message.Content);
+
+                    if (!match.Success)
+                    {
+                        continue;
+                    }
+
+                    info.Name = match.Groups["firmware_name"].Value;
+                    info.ExtruderCount = int.Parse(match.Groups["extruder_count"].Value);
+                    info.Uuid = match.Groups["uuid"].Value;
+                }
+                else if (message.Content.StartsWith("Cap:"))
+                {
+                    switch (message.Content[4..].Trim())
+                    {
+                        case "AUTOREPORT_TEMP:1":
+                            info.CanAutoReportTemperatures = true;
+                            break;
+
+                        case "EMERGENCY_PARSER:1":
+                            info.HasEmergencyParser = true;
+                            break;
+                    }
                 }
             }
-            while (line.Type != MarlinMessageType.CommandAcknowledgement && !sendCommandTask.IsCompleted);
+            while (message.Type != MarlinMessageType.CommandAcknowledgement && !sendCommandTask.IsCompleted);
 
             await sendCommandTask;
 
-            return result;
+            return info;
         }
 
         private async Task RunPrintAsync(Stream stream, CancellationToken cancellationToken)
