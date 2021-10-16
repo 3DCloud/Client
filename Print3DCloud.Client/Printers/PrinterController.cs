@@ -113,6 +113,8 @@ namespace Print3DCloud.Client.Printers
 
             try
             {
+                await this.Subscription.PerformAsync(new AcknowledgePrintMessage(), CancellationToken.None);
+
                 string directory = Path.Join(Directory.GetCurrentDirectory(), "tmp");
                 Directory.CreateDirectory(directory);
 
@@ -133,15 +135,13 @@ namespace Print3DCloud.Client.Printers
                 // we don't use "using" here since the file is kept open for the duration of the print
                 FileStream fileStream = new(path, FileMode.Open, FileAccess.Read);
                 await this.Printer.StartPrintAsync(fileStream, CancellationToken.None).ConfigureAwait(false);
-
-                await this.Subscription.PerformAsync(new AcknowledgePrintMessage(), CancellationToken.None);
             }
             catch (Exception ex)
             {
                 this.logger.LogError("Failed to start print");
                 this.logger.LogError(ex.ToString());
 
-                await this.Subscription.PerformAsync(new AcknowledgePrintMessage(ex), CancellationToken.None);
+                // TODO: send error to server
             }
         }
     }
