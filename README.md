@@ -14,6 +14,23 @@ If you don't have Visual Studio already, download [Visual Studio 2022 Community]
 
 You must also download the [.NET 6 SDK](https://dotnet.microsoft.com/download/dotnet/6.0) (currently in preview).
 
+Since this project uses custom NuGet packages using GitHub's NuGet package repository, you will need to create a file called `nuget.config` at the root of the cloned repo. Then, generate [a private token with at least the `read:packages` permission](https://github.com/settings/tokens/new?scopes=read:packages&description=NuGet%20(read-only)) and place the following contents in `nuget.config`:
+```xml
+<?xml version="1.0" encoding="utf-8"?>
+<configuration>
+  <packageSources>
+    <add key="github" value="https://nuget.pkg.github.com/3DCloud/index.json" protocolVersion="3" />
+  </packageSources>
+  <packageSourceCredentials>
+    <github>
+      <add key="Username" value="nicoco007" />
+      <add key="ClearTextPassword" value="put your github token here" />
+    </github>
+  </packageSourceCredentials>
+</configuration>
+
+```
+
 You should then be able to open the `Print3DCloud.sln` solution in Visual Studio and build the project. Before running, create a file called `config.json` in the build output folder with the following contents:
 
 ```json

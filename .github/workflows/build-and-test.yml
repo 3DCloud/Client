@@ -21,7 +21,9 @@ jobs:
         include-prerelease: true
 
     - name: Build
-      run: dotnet build Print3DCloud.Client/Print3DCloud.Client.csproj --runtime win-x64 --no-self-contained
+      run: |
+        dotnet nuget add source --username ${{ github.actor }} --password ${{ secrets.GITHUB_TOKEN }} --store-password-in-clear-text --name github "https://nuget.pkg.github.com/3DCloud/index.json"
+        dotnet build Print3DCloud.Client/Print3DCloud.Client.csproj --runtime win-x64 --no-self-contained
 
   build-linux-x64:
     runs-on: ubuntu-latest
@@ -37,7 +39,9 @@ jobs:
         include-prerelease: true
 
     - name: Build
-      run: dotnet build Print3DCloud.Client/Print3DCloud.Client.csproj --runtime linux-x64 --no-self-contained
+      run:  |
+        dotnet nuget add source --username ${{ github.actor }} --password ${{ secrets.GITHUB_TOKEN }} --store-password-in-clear-text --name github "https://nuget.pkg.github.com/3DCloud/index.json"
+        dotnet build Print3DCloud.Client/Print3DCloud.Client.csproj --runtime linux-x64 --no-self-contained
       
   build-linux-arm:
     runs-on: ubuntu-latest
@@ -53,7 +57,9 @@ jobs:
         include-prerelease: true
 
     - name: Build
-      run: dotnet build Print3DCloud.Client/Print3DCloud.Client.csproj --runtime linux-arm --no-self-contained
+      run:  |
+        dotnet nuget add source --username ${{ github.actor }} --password ${{ secrets.GITHUB_TOKEN }} --store-password-in-clear-text --name github "https://nuget.pkg.github.com/3DCloud/index.json"
+        dotnet build Print3DCloud.Client/Print3DCloud.Client.csproj --runtime linux-arm --no-self-contained
 
   test:
     runs-on: ubuntu-latest
@@ -71,6 +77,11 @@ jobs:
       with:
         dotnet-version: 6.0.x
         include-prerelease: true
+      
+    - name: Restore NuGet packages
+      run: |
+        dotnet nuget add source --username ${{ github.actor }} --password ${{ secrets.GITHUB_TOKEN }} --store-password-in-clear-text --name github "https://nuget.pkg.github.com/3DCloud/index.json"
+        dotnet restore
 
     - name: Run ActionCableSharp tests
       working-directory: ActionCableSharp.Tests

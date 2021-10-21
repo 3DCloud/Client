@@ -363,3 +363,5 @@ FodyWeavers.xsd
 
 # ReportGenerator test coverage
 /coverage
+
+nuget.config
