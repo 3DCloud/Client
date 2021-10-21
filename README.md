@@ -14,7 +14,7 @@ If you don't have Visual Studio already, download [Visual Studio 2022 Community]
 
 You must also download the [.NET 6 SDK](https://dotnet.microsoft.com/download/dotnet/6.0) (currently in preview).
 
-This project uses custom NuGet packages via GitHub's NuGet package repository. To set it up, first [generate a private token with at least the `read:packages` permission](https://github.com/settings/tokens/new?scopes=read:packages&description=NuGet%20(read-only)). Then, simply run the following command, swapping `github-username` and `github-token` for your actual username and the token you just generated:
+This project uses custom NuGet packages via GitHub's NuGet package repository. To set it up, first [generate a personal access token (PAT) with at least the `read:packages` permission](https://github.com/settings/tokens/new?scopes=read:packages&description=NuGet%20(read-only)). Then, simply run the following command, swapping `github-username` and `github-token` for your actual username and the token you just generated:
 ```bash
 dotnet nuget add source --username github-username --password github-token --name 3DCloud "https://nuget.pkg.github.com/3DCloud/index.json"
 ```
