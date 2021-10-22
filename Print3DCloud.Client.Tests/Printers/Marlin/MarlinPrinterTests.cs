@@ -231,7 +231,14 @@ namespace Print3DCloud.Client.Tests.Printers.Marlin
         [Fact]
         public async Task DisconnectAsync_WhenPrinterIsPrinting_DisconnectsSuccessfully()
         {
-            MarlinPrinter printer = await this.CreateConnectedPrinter();
+            SerialPrinterStreamSimulator sim = new();
+            MarlinPrinter printer = await this.CreateConnectedPrinter(sim);
+
+            _ = Task.Run(async () =>
+            {
+                await Task.Delay(500);
+                sim.SendMessage("ok");
+            });
 
             await using MemoryStream printStream = new(Encoding.ASCII.GetBytes("G0 X0 Y0"));
 

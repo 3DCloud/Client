@@ -165,19 +165,26 @@ namespace Print3DCloud.Client.Printers.Marlin
 
             this.logger.LogDebug("Waiting for all tasks to complete...");
 
-            this.backgroundTaskCancellationTokenSource?.Cancel();
-            this.backgroundTaskCancellationTokenSource = null;
-
             this.printCancellationTokenSource?.Cancel();
             this.printCancellationTokenSource = null;
 
-            List<Task> tasks = new(3);
+            if (this.printTask != null)
+            {
+                await this.printTask;
+            }
 
-            if (this.printTask != null) tasks.Add(this.printTask);
-            if (this.temperaturePollingTask != null) tasks.Add(this.temperaturePollingTask);
-            if (this.receiveLoopTask != null) tasks.Add(this.receiveLoopTask);
+            this.backgroundTaskCancellationTokenSource?.Cancel();
+            this.backgroundTaskCancellationTokenSource = null;
 
-            await Task.WhenAll(tasks);
+            if (this.temperaturePollingTask != null)
+            {
+                await this.temperaturePollingTask;
+            }
+
+            if (this.receiveLoopTask != null)
+            {
+                await this.receiveLoopTask;
+            }
 
             this.serialCommandManager?.Dispose();
             this.serialCommandManager = null;
