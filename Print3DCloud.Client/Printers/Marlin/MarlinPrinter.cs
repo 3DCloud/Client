@@ -109,7 +109,6 @@ namespace Print3DCloud.Client.Printers.Marlin
             }
 
             this.serialCommandManager = serialCommandManager;
-            this.logger.LogInformation("Connected");
 
             this.backgroundTaskCancellationTokenSource = new CancellationTokenSource();
 
@@ -126,6 +125,8 @@ namespace Print3DCloud.Client.Printers.Marlin
             {
                 this.temperaturePollingTask = Task.Run(() => this.TemperaturePolling(this.backgroundTaskCancellationTokenSource.Token), cancellationToken).ContinueWith(t => this.HandleTaskCompletedAsync(t, "Temperature polling"), CancellationToken.None);
             }
+
+            this.logger.LogInformation("Connected successfully");
 
             this.State = PrinterState.Ready;
         }
@@ -229,14 +230,28 @@ namespace Print3DCloud.Client.Printers.Marlin
         }
 
         /// <inheritdoc/>
-        public Task AbortPrintAsync(CancellationToken cancellationToken)
+        public async Task AbortPrintAsync(CancellationToken cancellationToken)
         {
             if (this.State != PrinterState.Printing && this.State != PrinterState.Pausing && this.State != PrinterState.Paused)
             {
                 throw new InvalidOperationException("Not printing");
             }
 
-            throw new NotImplementedException();
+            this.printCancellationTokenSource?.Cancel();
+
+            if (this.printTask != null)
+            {
+                try
+                {
+                    // TODO: add cancel G-code here
+                    await this.printTask;
+                }
+                catch (OperationCanceledException)
+                {
+                }
+            }
+
+            this.State = PrinterState.Ready;
         }
 
         /// <inheritdoc/>
@@ -342,23 +357,27 @@ namespace Print3DCloud.Client.Printers.Marlin
             try
             {
                 // StreamReader takes care of closing the stream properly
-                using StreamReader streamReader = new(stream);
-
-                while (!streamReader.EndOfStream)
+                using (StreamReader streamReader = new(stream))
                 {
-                    cancellationToken.ThrowIfCancellationRequested();
+                    while (!streamReader.EndOfStream)
+                    {
+                        cancellationToken.ThrowIfCancellationRequested();
 
-                    string? line = await streamReader.ReadLineAsync().ConfigureAwait(false);
+                        string? line = await streamReader.ReadLineAsync().ConfigureAwait(false);
 
-                    if (string.IsNullOrWhiteSpace(line)) continue;
+                        if (string.IsNullOrWhiteSpace(line)) continue;
 
-                    await this.SendCommandAsync(line, cancellationToken).ConfigureAwait(false);
+                        await this.SendCommandAsync(line, cancellationToken).ConfigureAwait(false);
+                    }
                 }
 
+                // TODO: add completion G-code here
                 this.State = PrinterState.Ready;
             }
             catch (Exception ex)
             {
+                // TODO: report to server
+                // TODO: add aborted G-code here
                 this.logger.LogError(ex.ToString());
                 throw;
             }
@@ -376,6 +395,8 @@ namespace Print3DCloud.Client.Printers.Marlin
             }
             else if (task.IsFaulted)
             {
+                // TODO: report to server
+                // TODO: if a print is running, mark it as errored
                 this.logger.LogError($"{name} task errored");
                 this.logger.LogError(task.Exception!.ToString());
 

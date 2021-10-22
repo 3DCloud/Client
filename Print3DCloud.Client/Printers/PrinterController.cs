@@ -16,6 +16,8 @@ namespace Print3DCloud.Client.Printers
     {
         private readonly ILogger<PrinterController> logger;
 
+        private long? currentPrintId;
+
         /// <summary>
         /// Initializes a new instance of the <see cref="PrinterController"/> class.
         /// </summary>
@@ -29,8 +31,9 @@ namespace Print3DCloud.Client.Printers
             this.logger = logger;
 
             this.Subscription.RegisterCallback<SendCommandMessage>("send_command", this.SendCommand);
-            this.Subscription.RegisterCallback("reconnect", this.ReconnectPrinter);
+            this.Subscription.RegisterCallback<AcknowledgeableMessage>("reconnect", this.ReconnectPrinter);
             this.Subscription.RegisterCallback<StartPrintMessage>("start_print", this.StartPrint);
+            this.Subscription.RegisterCallback<AcknowledgeableMessage>("abort_print", this.AbortPrint);
         }
 
         /// <summary>
@@ -92,14 +95,25 @@ namespace Print3DCloud.Client.Printers
             await this.Printer.SendCommandAsync(message.Command, CancellationToken.None);
         }
 
-        private async void ReconnectPrinter()
+        private async void ReconnectPrinter(AcknowledgeableMessage message)
         {
-            if (this.Printer.State != PrinterState.Disconnected)
-            {
-                await this.Printer.DisconnectAsync(CancellationToken.None);
-            }
+            this.logger.LogInformation("Attempting to reconnect");
 
-            await this.Printer.ConnectAsync(CancellationToken.None);
+            try
+            {
+                if (this.Printer.State != PrinterState.Disconnected)
+                {
+                    await this.Printer.DisconnectAsync(CancellationToken.None);
+                }
+
+                await this.Printer.ConnectAsync(CancellationToken.None);
+
+                await this.Subscription.PerformAsync(new AcknowledgeMessage(message.MessageId), CancellationToken.None);
+            }
+            catch (Exception ex)
+            {
+                await this.Subscription.PerformAsync(new AcknowledgeMessage(message.MessageId, ex), CancellationToken.None);
+            }
         }
 
         private async void StartPrint(StartPrintMessage message)
@@ -113,7 +127,8 @@ namespace Print3DCloud.Client.Printers
 
             try
             {
-                await this.Subscription.PerformAsync(new AcknowledgePrintMessage(), CancellationToken.None);
+                await this.Subscription.PerformAsync(new AcknowledgeMessage(message.MessageId), CancellationToken.None);
+                await this.Subscription.PerformAsync(new PrintEventMessage(message.PrintId, PrintEventType.Downloading), CancellationToken.None);
 
                 string directory = Path.Join(Directory.GetCurrentDirectory(), "tmp");
                 Directory.CreateDirectory(directory);
@@ -132,16 +147,42 @@ namespace Print3DCloud.Client.Printers
                     }
                 }
 
-                // we don't use "using" here since the file is kept open for the duration of the print
+                // we don't use "using" here since the file needs to be kept open for the duration of the print
                 FileStream fileStream = new(path, FileMode.Open, FileAccess.Read);
                 await this.Printer.StartPrintAsync(fileStream, CancellationToken.None).ConfigureAwait(false);
+
+                await this.Subscription.PerformAsync(new PrintEventMessage(message.PrintId, PrintEventType.Running), CancellationToken.None);
+
+                this.currentPrintId = message.PrintId;
             }
             catch (Exception ex)
             {
                 this.logger.LogError("Failed to start print");
                 this.logger.LogError(ex.ToString());
 
-                // TODO: send error to server
+                await this.Subscription.PerformAsync(new PrintEventMessage(message.PrintId, PrintEventType.Errored, ex), CancellationToken.None);
+            }
+        }
+
+        private async void AbortPrint(AcknowledgeableMessage message)
+        {
+            try
+            {
+                if (this.currentPrintId.HasValue && this.Printer.State == PrinterState.Printing)
+                {
+                    await this.Printer.AbortPrintAsync(CancellationToken.None);
+                    await this.Subscription.PerformAsync(
+                        new PrintEventMessage(this.currentPrintId.Value, PrintEventType.Canceled),
+                        CancellationToken.None);
+
+                    this.currentPrintId = null;
+                }
+
+                await this.Subscription.PerformAsync(new AcknowledgeMessage(message.MessageId), CancellationToken.None);
+            }
+            catch (Exception ex)
+            {
+                await this.Subscription.PerformAsync(new AcknowledgeMessage(message.MessageId, ex), CancellationToken.None);
             }
         }
     }

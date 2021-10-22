@@ -279,7 +279,7 @@ namespace Print3DCloud.Client.Printers.Marlin
         private async Task SendAndWaitForAcknowledgementAsync(byte[] command, CancellationToken cancellationToken)
         {
             await this.WriteLineAsync(command, cancellationToken);
-            await this.commandAcknowledgedSemaphore.WaitAsync(cancellationToken);
+            await this.commandAcknowledgedSemaphore.WaitAsync(CancellationToken.None);
         }
 
         private async Task WriteLineAsync(byte[] line, CancellationToken cancellationToken)
