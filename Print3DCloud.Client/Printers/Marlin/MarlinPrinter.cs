@@ -394,18 +394,18 @@ namespace Print3DCloud.Client.Printers.Marlin
         {
             if (task.IsCompletedSuccessfully)
             {
-                this.logger.LogDebug($"{name} task completed");
+                this.logger.LogDebug("{name} task completed", name);
             }
             else if (task.IsCanceled)
             {
-                this.logger.LogDebug($"{name} task canceled");
+                this.logger.LogDebug("{name} task canceled", name);
             }
             else if (task.IsFaulted)
             {
                 // TODO: report to server
                 // TODO: if a print is running, mark it as errored
-                this.logger.LogError($"{name} task errored");
-                this.logger.LogError(task.Exception!.ToString());
+                this.logger.LogError("{name} task errored", name);
+                this.logger.LogError("{exception}", task.Exception!.ToString());
 
                 await this.DisconnectAsync(CancellationToken.None);
             }
@@ -424,14 +424,14 @@ namespace Print3DCloud.Client.Printers.Marlin
         {
             while (this.serialCommandManager != null)
             {
-                MarlinMessage line = await this.serialCommandManager.ReceiveLineAsync(cancellationToken).ConfigureAwait(false);
+                (string content, MarlinMessageType type) = await this.serialCommandManager.ReceiveLineAsync(cancellationToken).ConfigureAwait(false);
 
-                if (line.Type != MarlinMessageType.Message)
+                if (type != MarlinMessageType.Message)
                 {
                     continue;
                 }
 
-                this.HandleLine(line.Content);
+                this.HandleLine(content);
             }
         }
 

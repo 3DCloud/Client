@@ -32,13 +32,35 @@ namespace Print3DCloud.Client.Tests.TestUtilities
         public override bool CanWrite => true;
 
         /// <inheritdoc/>
-        public override long Length => this.inputStream.Length;
+        public override long Length
+        {
+            get
+            {
+                lock (this.inputStream)
+                {
+                    return this.inputStream.Length;
+                }
+            }
+        }
 
         /// <inheritdoc/>
         public override long Position
         {
-            get => this.inputStream.Position;
-            set => this.inputStream.Position = value;
+            get
+            {
+                lock (this.inputStream)
+                {
+                    return this.inputStream.Position;
+                }
+            }
+
+            set
+            {
+                lock (this.inputStream)
+                {
+                    this.inputStream.Position = value;
+                }
+            }
         }
 
         /// <summary>

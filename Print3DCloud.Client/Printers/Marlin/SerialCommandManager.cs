@@ -136,7 +136,7 @@ namespace Print3DCloud.Client.Printers.Marlin
                 if (newLineIndex >= 0)
                 {
                     command = command[..newLineIndex];
-                    this.logger.LogInformation($"Command has multiple lines; only the first one ('{command}') will be sent");
+                    this.logger.LogInformation("Command has multiple lines; only the first one ('{command}') will be sent", command);
                 }
 
                 byte[] line = this.BuildCommand(command);
@@ -210,12 +210,12 @@ namespace Print3DCloud.Client.Printers.Marlin
             else if (line.StartsWith("Resend:"))
             {
                 this.resendLine = int.Parse(line[7..].Trim());
-                this.logger.LogWarning("Printer requested resend for line number " + this.resendLine);
+                this.logger.LogWarning("Printer requested resend for line number {lineNumber}", this.resendLine);
                 return new MarlinMessage(line, MarlinMessageType.ResendLine);
             }
             else if (line.StartsWith(UnknownCommandMessage))
             {
-                this.logger.LogWarning(line);
+                this.logger.LogWarning("{unknownCommandMessage}", line);
                 return new MarlinMessage(line, MarlinMessageType.UnknownCommand);
             }
 

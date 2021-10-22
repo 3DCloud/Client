@@ -137,14 +137,14 @@ namespace Print3DCloud.Client.Tests.Printers.Marlin
 
             Assert.Collection(
                 printer.Temperatures!.HotendTemperatures,
-                t0 =>
+                t =>
                 {
-                    Assert.Equal(136.73, t0.Current);
-                    Assert.Equal(210.00, t0.Target);
+                    Assert.Equal(136.73, t.Current);
+                    Assert.Equal(210.00, t.Target);
                 },
-                t1 =>
+                t =>
                 {
-                    (_, double current, double target) = t1;
+                    (_, double current, double target) = t;
                     Assert.Equal(162.94, current);
                     Assert.Equal(0.00, target);
                 });
