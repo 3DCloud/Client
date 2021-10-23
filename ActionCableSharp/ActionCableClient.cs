@@ -183,7 +183,7 @@ namespace ActionCableSharp
         /// </summary>
         /// <param name="identifier">Identifier for the channel.</param>
         /// <returns>A reference to the <see cref="ActionCableSubscription"/> linked to the specified <paramref name="identifier"/>.</returns>
-        public virtual ActionCableSubscription GetSubscription(Identifier identifier)
+        public virtual IActionCableSubscription GetSubscription(Identifier identifier)
         {
             if (this.disposed)
             {
@@ -299,8 +299,7 @@ namespace ActionCableSharp
                     }
                     catch (JsonException ex)
                     {
-                        this.logger.LogError("Failed to process message");
-                        this.logger.LogError(ex.ToString());
+                        this.logger.LogError("Failed to process message\n{Exception}", ex);
                     }
 
                     break;
@@ -394,7 +393,7 @@ namespace ActionCableSharp
 
                 try
                 {
-                    this.logger.LogInformation($"Connecting to {this.Uri}");
+                    this.logger.LogInformation("Connecting to '{CableUri}'...", this.Uri);
 
                     this.webSocket = this.webSocketFactory.CreateWebSocket();
                     this.webSocket.SetRequestHeader("Origin", this.Origin);
@@ -418,7 +417,7 @@ namespace ActionCableSharp
                 catch (WebSocketException)
                 {
                     int reconnectDelay = ReconnectDelays[reconnectDelayIndex];
-                    this.logger.LogError($"Failed to connect, waiting {reconnectDelay} ms before retrying...");
+                    this.logger.LogError("Failed to connect, waiting {ReconnectDelay} ms before retrying...", reconnectDelay);
 
                     // prevent thundering herd problem by introducing random jitter
                     int actualDelay = this.random.Next((int)(reconnectDelay * 0.8), (int)(reconnectDelay * 1.2));
@@ -479,12 +478,11 @@ namespace ActionCableSharp
         {
             if (task.IsCompletedSuccessfully)
             {
-                this.logger.LogInformation($"Incoming message task ended");
+                this.logger.LogInformation("Incoming message task ended");
             }
             else if (task.IsFaulted)
             {
-                this.logger.LogError("Incoming message task errored");
-                this.logger.LogError(task.Exception!.ToString());
+                this.logger.LogError("Incoming message task errored\n{Exception}", task.Exception);
             }
             else if (task.IsCanceled)
             {

@@ -1,6 +1,7 @@
 ﻿using System;
 using System.Buffers;
 using System.Collections.Generic;
+using System.Net.WebSockets;
 using System.Reflection;
 using System.Text.Json;
 using System.Threading;
@@ -12,7 +13,7 @@ namespace ActionCableSharp
     /// <summary>
     /// Encapsulates a subscription created when subscribing to a channel through an <see cref="ActionCableClient"/> instance.
     /// </summary>
-    public class ActionCableSubscription : IDisposable
+    public class ActionCableSubscription : IActionCableSubscription
     {
         private readonly ActionCableClient client;
         private readonly Dictionary<string, List<Delegate>> callbacks = new();
@@ -36,42 +37,25 @@ namespace ActionCableSharp
             this.client.MessageReceived += this.Client_MessageReceived;
         }
 
-        /// <summary>
-        /// Event invoked when the server confirms the subscription.
-        /// </summary>
+        /// <inheritdoc/>
         public event Action? Subscribed;
 
-        /// <summary>
-        /// Event invoked when the server rejects the subscription.
-        /// </summary>
+        /// <inheritdoc/>
         public event Action? Rejected;
 
-        /// <summary>
-        /// Event invoked when the subscription is no longer active.
-        /// </summary>
+        /// <inheritdoc/>
         public event Action? Unsubscribed;
 
-        /// <summary>
-        /// Event invoked when a message is received.
-        /// </summary>
+        /// <inheritdoc/>
         public event Action<JsonElement>? Received;
 
-        /// <summary>
-        /// Gets the <see cref="Identifier"/> used to identify this subscription when communicating with the server.
-        /// </summary>
+        /// <inheritdoc/>
         public Identifier Identifier { get; }
 
-        /// <summary>
-        /// Gets the subscription's current state.
-        /// </summary>
+        /// <inheritdoc/>
         public SubscriptionState State { get; internal set; }
 
-        /// <summary>
-        /// Perform an action on the server.
-        /// </summary>
-        /// <param name="data"><see cref="ActionMessage"/> that contains the method name and optional data.</param>
-        /// <param name="cancellationToken">A <see cref="CancellationToken"/> used to propagate notification that the operation should be canceled.</param>
-        /// <returns>A <see cref="Task"/> that completes once the message has been sent.</returns>
+        /// <inheritdoc/>
         public Task PerformAsync(ActionMessage data, CancellationToken cancellationToken)
         {
             if (this.disposed)
@@ -87,11 +71,34 @@ namespace ActionCableSharp
             return this.client.SendMessageAsync("message", this.Identifier, cancellationToken, data);
         }
 
-        /// <summary>
-        /// Subscribes this subscription on the server.
-        /// </summary>
-        /// <param name="cancellationToken">A <see cref="CancellationToken"/> used to propagate notification that the operation should be canceled.</param>
-        /// <returns>A <see cref="Task"/> that completes once the subscription request has been sent to the server.</returns>
+        /// <inheritdoc/>
+        public async Task GuaranteePerformAsync(ActionMessage data, CancellationToken cancellationToken)
+        {
+            if (this.disposed)
+            {
+                throw new ObjectDisposedException(nameof(ActionCableSubscription));
+            }
+
+            bool sent = false;
+
+            do
+            {
+                cancellationToken.ThrowIfCancellationRequested();
+
+                try
+                {
+                    await this.client.SendMessageAsync("message", this.Identifier, cancellationToken, data);
+                    sent = true;
+                }
+                catch (WebSocketException)
+                {
+                    await Task.Delay(1000, cancellationToken);
+                }
+            }
+            while (!sent);
+        }
+
+        /// <inheritdoc/>
         public async Task SubscribeAsync(CancellationToken cancellationToken)
         {
             if (this.disposed)
@@ -107,11 +114,7 @@ namespace ActionCableSharp
             this.State = SubscriptionState.Pending;
         }
 
-        /// <summary>
-        /// Registers a callback when a message with an "action" field with the value <paramref name="actionName"/> is received.
-        /// </summary>
-        /// <param name="actionName">Name of the action.</param>
-        /// <param name="callback">Callback to call.</param>
+        /// <inheritdoc/>
         public void RegisterCallback(string actionName, Action callback)
         {
             if (this.disposed)
@@ -127,12 +130,7 @@ namespace ActionCableSharp
             this.callbacks[actionName].Add(callback);
         }
 
-        /// <summary>
-        /// Registers a callback when a message with an "action" field with the value <paramref name="actionName"/> is received.
-        /// </summary>
-        /// <typeparam name="T">Type to which the message should be deserialized.</typeparam>
-        /// <param name="actionName">Name of the action.</param>
-        /// <param name="callback">Callback to call.</param>
+        /// <inheritdoc/>
         public void RegisterCallback<T>(string actionName, Action<T> callback)
         {
             if (this.disposed)
@@ -148,11 +146,7 @@ namespace ActionCableSharp
             this.callbacks[actionName].Add(callback);
         }
 
-        /// <summary>
-        /// Unsubscribe this subscription on the server.
-        /// </summary>
-        /// <param name="cancellationToken">A <see cref="CancellationToken"/> used to propagate notification that the operation should be canceled.</param>
-        /// <returns>A <see cref="Task"/> that completes once the unsubscription request has been sent to the server.</returns>
+        /// <inheritdoc/>
         public async Task Unsubscribe(CancellationToken cancellationToken)
         {
             if (this.disposed)

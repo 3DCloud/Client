@@ -72,6 +72,7 @@ namespace Print3DCloud.Client.Tests.TestUtilities
             lock (this.inputStream)
             {
                 byte[] data = this.encoding.GetBytes(message + '\n');
+                this.inputStream.Seek(0, SeekOrigin.End);
                 this.inputStream.Write(data);
                 this.inputStream.Seek(-data.Length, SeekOrigin.Current);
             }

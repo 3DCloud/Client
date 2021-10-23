@@ -31,10 +31,13 @@ namespace Print3DCloud.Client.Printers.Marlin
         private readonly SemaphoreSlim sendCommandSemaphore = new(1, 1);
         private readonly SemaphoreSlim commandAcknowledgedSemaphore = new(0, 1);
 
+        private readonly CancellationTokenSource disposeCancellationTokenSource = new();
+
         private int currentLineNumber;
         private int resendLine;
 
         private bool connected;
+        private bool disposed;
 
         /// <summary>
         /// Initializes a new instance of the <see cref="SerialCommandManager"/> class.
@@ -52,7 +55,8 @@ namespace Print3DCloud.Client.Printers.Marlin
             this.encoding = encoding ?? throw new ArgumentNullException(nameof(encoding));
             this.newLine = newLine;
 
-            this.streamReader = new StreamReader(stream, encoding);
+            // we don't want the StreamReader to close the stream since SerialPort's stream can sometimes throw exceptions when disposing
+            this.streamReader = new StreamReader(stream, encoding, false, 81920, true);
         }
 
         /// <summary>
@@ -63,6 +67,11 @@ namespace Print3DCloud.Client.Printers.Marlin
         /// <exception cref="ObjectDisposedException">Thrown if this object has been disposed.</exception>
         public async Task WaitForStartupAsync(CancellationToken cancellationToken)
         {
+            if (this.disposed)
+            {
+                throw new ObjectDisposedException(nameof(SerialCommandManager));
+            }
+
             string? line = null;
 
             while (line == null || !line.EndsWith(PrinterAliveMessage))
@@ -97,6 +106,11 @@ namespace Print3DCloud.Client.Printers.Marlin
             if (!this.connected)
             {
                 throw new InvalidOperationException("Startup did not complete");
+            }
+
+            if (this.disposed)
+            {
+                throw new ObjectDisposedException(nameof(SerialCommandManager));
             }
 
             if (string.IsNullOrWhiteSpace(command))
@@ -163,7 +177,7 @@ namespace Print3DCloud.Client.Printers.Marlin
                     await this.SendAndWaitForAcknowledgementAsync(line, cancellationToken).ConfigureAwait(false);
                 }
 
-                this.currentLineNumber++;
+                ++this.currentLineNumber;
             }
             finally
             {
@@ -183,6 +197,11 @@ namespace Print3DCloud.Client.Printers.Marlin
             if (!this.connected)
             {
                 throw new InvalidOperationException("Startup did not complete");
+            }
+
+            if (this.disposed)
+            {
+                throw new ObjectDisposedException(nameof(SerialCommandManager));
             }
 
             string line = await this.ReadLineAsync(cancellationToken);
@@ -237,11 +256,24 @@ namespace Print3DCloud.Client.Printers.Marlin
         {
             if (disposing)
             {
+                this.disposeCancellationTokenSource.Cancel();
+                this.disposeCancellationTokenSource.Dispose();
+
                 this.streamReader.Dispose();
-                this.stream.Dispose();
+
+                try
+                {
+                    this.stream.Dispose();
+                }
+                catch (UnauthorizedAccessException)
+                {
+                }
+
                 this.sendCommandSemaphore.Dispose();
                 this.commandAcknowledgedSemaphore.Dispose();
             }
+
+            this.disposed = true;
         }
 
         /// <summary>
@@ -279,7 +311,7 @@ namespace Print3DCloud.Client.Printers.Marlin
         private async Task SendAndWaitForAcknowledgementAsync(byte[] command, CancellationToken cancellationToken)
         {
             await this.WriteLineAsync(command, cancellationToken);
-            await this.commandAcknowledgedSemaphore.WaitAsync(CancellationToken.None);
+            await this.commandAcknowledgedSemaphore.WaitAsync(this.disposeCancellationTokenSource.Token);
         }
 
         private async Task WriteLineAsync(byte[] line, CancellationToken cancellationToken)

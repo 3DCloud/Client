@@ -15,8 +15,8 @@ namespace Print3DCloud.Client.Printers
         private readonly ILogger<DummyPrinter> logger;
         private readonly Random random;
 
-        private Task? connectedTask;
-        private CancellationTokenSource? cancellationTokenSource;
+        private Task? printTask;
+        private CancellationTokenSource? printCancellationTokenSource;
 
         /// <summary>
         /// Initializes a new instance of the <see cref="DummyPrinter"/> class.
@@ -33,68 +33,72 @@ namespace Print3DCloud.Client.Printers
 
         /// <inheritdoc/>
         public PrinterTemperatures Temperatures => new(
-            new TemperatureSensor("T0", 210 + this.random.NextDouble() * 0.5, 210),
+            new TemperatureSensor("T0", 210 + this.random.NextDouble() - 0.5, 210),
             new List<TemperatureSensor>
             {
-                new("T0", 210 + this.random.NextDouble() * 0.5, 210),
-                new("T1", 190 + this.random.NextDouble() * 0.5, 190),
+                new("T0", 210 + this.random.NextDouble() - 0.5, 210),
+                new("T1", 190 + this.random.NextDouble() - 0.5, 190),
             },
-            new TemperatureSensor("B", 60 + this.random.NextDouble() * 0.5, 60));
+            new TemperatureSensor("B", 60 + this.random.NextDouble() - 0.5, 60));
 
         /// <inheritdoc/>
         public Task ConnectAsync(CancellationToken cancellationToken)
         {
             this.logger.LogInformation("Connected");
-            this.cancellationTokenSource = new CancellationTokenSource();
-            this.connectedTask = Task.Run(this.StatusLoop, cancellationToken).ContinueWith(this.HandleStatusLoopTaskCompleted, CancellationToken.None);
             return Task.CompletedTask;
         }
 
         /// <inheritdoc/>
         public async Task DisconnectAsync(CancellationToken cancellationToken)
         {
-            if (this.connectedTask != null)
+            this.printCancellationTokenSource?.Cancel();
+            this.printCancellationTokenSource = null;
+
+            if (this.printTask != null)
             {
-                this.cancellationTokenSource?.Cancel();
-                await this.connectedTask;
-                this.connectedTask = null;
+                await this.printTask;
+                this.printTask = null;
             }
 
             this.logger.LogInformation("Disconnected");
         }
 
         /// <inheritdoc/>
-        public Task StartPrintAsync(Stream fileStream, CancellationToken cancellationToken)
+        public Task ExecutePrintAsync(Stream fileStream, CancellationToken cancellationToken)
         {
+            this.State = PrinterState.Printing;
+
+            this.printCancellationTokenSource = new CancellationTokenSource();
+
+            return Task.Delay(30_000, this.printCancellationTokenSource.Token);
+        }
+
+        /// <inheritdoc/>
+        public Task PausePrintAsync(CancellationToken cancellationToken)
+        {
+            this.State = PrinterState.Pausing;
+
+            this.printCancellationTokenSource?.Cancel();
+
+            this.State = PrinterState.Paused;
+
+            return Task.CompletedTask;
+        }
+
+        /// <inheritdoc/>
+        public Task ResumePrintAsync(CancellationToken cancellationToken)
+        {
+            this.State = PrinterState.Resuming;
+
             this.State = PrinterState.Printing;
 
             return Task.CompletedTask;
         }
 
         /// <inheritdoc/>
-        public async Task PausePrintAsync(CancellationToken cancellationToken)
-        {
-            this.State = PrinterState.Pausing;
-
-            await Task.Delay(3000, cancellationToken);
-
-            this.State = PrinterState.Paused;
-        }
-
-        /// <inheritdoc/>
-        public async Task ResumePrintAsync(CancellationToken cancellationToken)
-        {
-            this.State = PrinterState.Resuming;
-
-            await Task.Delay(3000, cancellationToken);
-
-            this.State = PrinterState.Printing;
-        }
-
-        /// <inheritdoc/>
         public async Task AbortPrintAsync(CancellationToken cancellationToken)
         {
-            this.State = PrinterState.Aborting;
+            this.State = PrinterState.Canceling;
 
             await Task.Delay(3000, cancellationToken);
 
@@ -104,8 +108,7 @@ namespace Print3DCloud.Client.Printers
         /// <inheritdoc/>
         public Task SendCommandAsync(string command, CancellationToken cancellationToken)
         {
-            this.logger.LogInformation($"SEND {command}");
-            return Task.Delay(500, cancellationToken);
+            return Task.Delay(50, cancellationToken);
         }
 
         /// <inheritdoc/>
@@ -131,24 +134,6 @@ namespace Print3DCloud.Client.Printers
         protected void Dispose(bool disposing)
         {
             this.State = PrinterState.Disconnected;
-        }
-
-        private async Task StatusLoop()
-        {
-            if (this.cancellationTokenSource == null) return;
-
-            CancellationToken cancellationToken = this.cancellationTokenSource.Token;
-
-            while (true)
-            {
-                cancellationToken.ThrowIfCancellationRequested();
-
-                await Task.Delay(1000);
-            }
-        }
-
-        private void HandleStatusLoopTaskCompleted(Task task)
-        {
         }
     }
 }

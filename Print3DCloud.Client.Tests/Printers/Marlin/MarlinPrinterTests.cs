@@ -2,6 +2,7 @@
 using System.IO;
 using System.Text;
 using System.Text.RegularExpressions;
+using System.Threading;
 using System.Threading.Tasks;
 using Moq;
 using Print3DCloud.Client.Printers;
@@ -166,7 +167,7 @@ namespace Print3DCloud.Client.Tests.Printers.Marlin
 
             sim.SendMessage("T0:136.73 /210.00 C:23.98 /60.00 T0:136.73 /210.00 @:127 C@:127 @0:127");
 
-            await Task.Delay(5);
+            await Task.Delay(20);
 
             Assert.NotNull(printer.Temperatures);
             Assert.Single(printer.Temperatures!.HotendTemperatures);
@@ -234,21 +235,19 @@ namespace Print3DCloud.Client.Tests.Printers.Marlin
             SerialPrinterStreamSimulator sim = new();
             MarlinPrinter printer = await this.CreateConnectedPrinter(sim);
 
-            _ = Task.Run(async () =>
-            {
-                await Task.Delay(500);
-                sim.SendMessage("ok");
-            });
-
             await using MemoryStream printStream = new(Encoding.ASCII.GetBytes("G0 X0 Y0"));
 
-            await printer.StartPrintAsync(printStream, TestHelpers.CreateTimeOutToken());
+            _ = printer.ExecutePrintAsync(printStream, CancellationToken.None/*TestHelpers.CreateTimeOutToken()*/);
 
             Assert.Equal(PrinterState.Printing, printer.State);
 
-            await Task.Delay(5);
+            sim.SendMessage("ok");
 
-            await printer.DisconnectAsync(TestHelpers.CreateTimeOutToken());
+            Task disconnectTask = printer.DisconnectAsync(TestHelpers.CreateTimeOutToken());
+
+            Assert.Equal(PrinterState.Disconnecting, printer.State);
+
+            await disconnectTask;
 
             Assert.Equal(PrinterState.Disconnected, printer.State);
         }
@@ -263,7 +262,7 @@ namespace Print3DCloud.Client.Tests.Printers.Marlin
 
             InvalidOperationException exception = await Assert.ThrowsAsync<InvalidOperationException>(async () =>
             {
-                await printer.StartPrintAsync(new MemoryStream(), TestHelpers.CreateTimeOutToken());
+                await printer.ExecutePrintAsync(new MemoryStream(), TestHelpers.CreateTimeOutToken());
             });
 
             Assert.Equal("Printer isn't ready", exception.Message);

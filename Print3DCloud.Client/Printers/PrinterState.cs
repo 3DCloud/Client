@@ -21,6 +21,11 @@
         Ready,
 
         /// <summary>
+        /// A file to print is being downloaded.
+        /// </summary>
+        Downloading,
+
+        /// <summary>
         /// The printer is attempting to disconnect gracefully.
         /// </summary>
         Disconnecting,
@@ -36,7 +41,7 @@
         Heating,
 
         /// <summary>
-        /// The printer is printing from a file. Sub-state of <see cref="Ready"/>.
+        /// The printer is printing from a file.
         /// </summary>
         Printing,
 
@@ -58,7 +63,7 @@
         /// <summary>
         /// The printer has received an abort request and is attempting to abort the ongoing print. Sub-state of <see cref="Printing"/>.
         /// </summary>
-        Aborting,
+        Canceling,
 
         /// <summary>
         /// An error has occurred and the printer cannot accept commands until it is reconnected.

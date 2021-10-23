@@ -6,7 +6,7 @@ using System.Threading.Tasks;
 namespace Print3DCloud.Client.Printers
 {
     /// <summary>
-    /// Represents a connected 3D printer.
+    /// Interface between a physical machine and the server.
     /// </summary>
     internal interface IPrinter : IDisposable
     {
@@ -14,12 +14,12 @@ namespace Print3DCloud.Client.Printers
         /// Gets the <see cref="PrinterState"/> that represents the current state of this printer.
         /// </summary>
         /// <returns>The state of the printer.</returns>
-        public PrinterState State { get; }
+        PrinterState State { get; }
 
         /// <summary>
         /// Gets the <see cref="PrinterTemperatures"/> containing the latest temperatures reported by the printer.
         /// </summary>
-        public PrinterTemperatures? Temperatures { get; }
+        PrinterTemperatures? Temperatures { get; }
 
         /// <summary>
         /// Connects to the printer.
@@ -36,12 +36,12 @@ namespace Print3DCloud.Client.Printers
         Task DisconnectAsync(CancellationToken cancellationToken);
 
         /// <summary>
-        /// Starts a print on this printer.
+        /// Runs a print on this printer.
         /// </summary>
         /// <param name="stream">The <see cref="Stream"/> containing the file to print.</param>
         /// <param name="cancellationToken">A <see cref="CancellationToken"/> used to propagate notification that the operation should be canceled.</param>
         /// <returns>A <see cref="Task"/> that completes once the print has been started.</returns>
-        Task StartPrintAsync(Stream stream, CancellationToken cancellationToken);
+        Task ExecutePrintAsync(Stream stream, CancellationToken cancellationToken);
 
         /// <summary>
         /// Pauses the print that is currently running.

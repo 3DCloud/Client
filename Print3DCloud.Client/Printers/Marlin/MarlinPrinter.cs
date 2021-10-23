@@ -29,7 +29,7 @@ namespace Print3DCloud.Client.Printers.Marlin
         private static readonly Regex FirmwareInfoRegex = new(@"^FIRMWARE_NAME:(?<firmware_name>.*) SOURCE_CODE_URL:.* PROTOCOL_VERSION:.* MACHINE_TYPE:.* EXTRUDER_COUNT:(?<extruder_count>\d+) UUID:(?<uuid>.*)$");
         private static readonly Regex TemperaturesRegex = new(@"(?<sensor>B|T\d?):(?<current>[\d\.]+) \/(?<target>[\d\.]+)");
 
-        private readonly ISerialPortFactory printerStreamFactory;
+        private readonly ISerialPortFactory serialPortFactory;
         private readonly ILogger<MarlinPrinter> logger;
         private readonly string portName;
         private readonly int baudRate;
@@ -46,20 +46,20 @@ namespace Print3DCloud.Client.Printers.Marlin
         /// <summary>
         /// Initializes a new instance of the <see cref="MarlinPrinter"/> class.
         /// </summary>
-        /// <param name="printerStreamFactory">The factory to use when creating a stream for communicating with the printer.</param>
+        /// <param name="serialPortFactory">The factory to use when creating a stream for communicating with the printer.</param>
         /// <param name="logger">The logger that should be used for this printer.</param>
         /// <param name="portName">Name of the serial port to which this printer should connect.</param>
         /// <param name="baudRate">The baud rate to be used for serial communication.</param>
-        public MarlinPrinter(ISerialPortFactory printerStreamFactory, ILogger<MarlinPrinter> logger, string portName, int baudRate = 250_000)
+        public MarlinPrinter(ISerialPortFactory serialPortFactory, ILogger<MarlinPrinter> logger, string portName, int baudRate = 250_000)
         {
-            this.printerStreamFactory = printerStreamFactory;
+            this.serialPortFactory = serialPortFactory;
             this.logger = logger;
             this.portName = portName;
             this.baudRate = baudRate;
         }
 
         /// <inheritdoc/>
-        public PrinterState State { get; private set; } = PrinterState.Disconnected;
+        public PrinterState State { get; private set; }
 
         /// <inheritdoc/>
         public PrinterTemperatures? Temperatures { get; private set; }
@@ -81,9 +81,9 @@ namespace Print3DCloud.Client.Printers.Marlin
             {
                 try
                 {
-                    this.logger.LogInformation($"Connecting to Marlin printer at port '{this.portName}'...");
+                    this.logger.LogInformation("Connecting to Marlin printer at port '{PortName}'...", this.portName);
 
-                    this.serialPort = this.printerStreamFactory.CreateSerialPort(this.portName, this.baudRate);
+                    this.serialPort = this.serialPortFactory.CreateSerialPort(this.portName, this.baudRate);
 
                     this.serialPort.Open();
 
@@ -165,6 +165,9 @@ namespace Print3DCloud.Client.Printers.Marlin
 
             this.logger.LogDebug("Waiting for all tasks to complete...");
 
+            this.serialCommandManager?.Dispose();
+            this.serialCommandManager = null;
+
             this.printCancellationTokenSource?.Cancel();
             this.printCancellationTokenSource = null;
 
@@ -186,10 +189,14 @@ namespace Print3DCloud.Client.Printers.Marlin
                 await this.receiveLoopTask;
             }
 
-            this.serialCommandManager?.Dispose();
-            this.serialCommandManager = null;
+            try
+            {
+                this.serialPort?.Close();
+            }
+            catch (UnauthorizedAccessException)
+            {
+            }
 
-            this.serialPort?.Close();
             this.serialPort = null;
 
             this.State = PrinterState.Disconnected;
@@ -199,19 +206,23 @@ namespace Print3DCloud.Client.Printers.Marlin
         }
 
         /// <inheritdoc/>
-        public Task StartPrintAsync(Stream stream, CancellationToken cancellationToken)
+        public Task ExecutePrintAsync(Stream stream, CancellationToken cancellationToken)
         {
             if (this.State != PrinterState.Ready)
             {
                 throw new InvalidOperationException("Printer isn't ready");
             }
 
+            CancellationTokenSource cancellationTokenSource = new();
+
+            this.printCancellationTokenSource = cancellationTokenSource;
             this.State = PrinterState.Printing;
-            this.printCancellationTokenSource = new CancellationTokenSource();
 
-            this.printTask = Task.Run(() => this.RunPrintAsync(stream, this.printCancellationTokenSource.Token).ContinueWith(t => this.HandleTaskCompletedAsync(t, "Print"), CancellationToken.None), cancellationToken);
+            Task task = Task.Run(() => this.RunPrintAsync(stream, cancellationTokenSource.Token), cancellationToken);
 
-            return Task.CompletedTask;
+            this.printTask = task.ContinueWith((t) => this.HandleTaskCompletedAsync(t, "Print"), cancellationToken);
+
+            return task;
         }
 
         /// <inheritdoc/>
@@ -244,18 +255,14 @@ namespace Print3DCloud.Client.Printers.Marlin
                 throw new InvalidOperationException("Not printing");
             }
 
+            this.State = PrinterState.Canceling;
+
             this.printCancellationTokenSource?.Cancel();
 
             if (this.printTask != null)
             {
-                try
-                {
-                    // TODO: add cancel G-code here
-                    await this.printTask;
-                }
-                catch (OperationCanceledException)
-                {
-                }
+                // TODO: add cancel G-code here
+                await this.printTask;
             }
 
             this.State = PrinterState.Ready;
@@ -277,7 +284,6 @@ namespace Print3DCloud.Client.Printers.Marlin
             if (disposing)
             {
                 this.State = PrinterState.Disconnected;
-                this.Temperatures = null;
 
                 this.serialCommandManager?.Dispose();
                 this.serialCommandManager = null;
@@ -361,33 +367,23 @@ namespace Print3DCloud.Client.Printers.Marlin
 
         private async Task RunPrintAsync(Stream stream, CancellationToken cancellationToken)
         {
-            try
+            // StreamReader takes care of closing the stream properly
+            using (StreamReader streamReader = new(stream))
             {
-                // StreamReader takes care of closing the stream properly
-                using (StreamReader streamReader = new(stream))
+                while (!streamReader.EndOfStream)
                 {
-                    while (!streamReader.EndOfStream)
-                    {
-                        cancellationToken.ThrowIfCancellationRequested();
+                    cancellationToken.ThrowIfCancellationRequested();
 
-                        string? line = await streamReader.ReadLineAsync().ConfigureAwait(false);
+                    string? line = await streamReader.ReadLineAsync().ConfigureAwait(false);
 
-                        if (string.IsNullOrWhiteSpace(line)) continue;
+                    if (string.IsNullOrWhiteSpace(line)) continue;
 
-                        await this.SendCommandAsync(line, cancellationToken).ConfigureAwait(false);
-                    }
+                    await this.SendCommandAsync(line, cancellationToken).ConfigureAwait(false);
                 }
+            }
 
-                // TODO: add completion G-code here
-                this.State = PrinterState.Ready;
-            }
-            catch (Exception ex)
-            {
-                // TODO: report to server
-                // TODO: add aborted G-code here
-                this.logger.LogError(ex.ToString());
-                throw;
-            }
+            // TODO: add completion G-code here
+            this.State = PrinterState.Ready;
         }
 
         private async Task HandleTaskCompletedAsync(Task task, string name)

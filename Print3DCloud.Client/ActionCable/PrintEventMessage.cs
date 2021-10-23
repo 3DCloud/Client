@@ -11,26 +11,16 @@ namespace Print3DCloud.Client.ActionCable
         /// <summary>
         /// Initializes a new instance of the <see cref="PrintEventMessage"/> class.
         /// </summary>
-        /// <param name="printId">ID of the print associated with this event.</param>
         /// <param name="evt">Event type.</param>
         /// <param name="exception">Exception related to the event, if any.</param>
-        public PrintEventMessage(long printId, PrintEventType evt, Exception? exception = null)
+        public PrintEventMessage(PrintEventType evt, Exception? exception = null)
             : base("print_event")
         {
-            this.PrintId = printId;
             this.EventType = evt;
 
-            if (exception != null)
-            {
-                this.ErrorMessage = exception.Message;
-                this.StackTrace = exception.StackTrace;
-            }
+            this.ErrorMessage = exception?.Message;
+            this.StackTrace = exception?.StackTrace;
         }
-
-        /// <summary>
-        /// Gets or sets the print ID associated with this event.
-        /// </summary>
-        public long PrintId { get; set; }
 
         /// <summary>
         /// Gets or sets the type of event.

@@ -21,7 +21,7 @@ namespace Print3DCloud.Client.Tests.Printers
             Assert.Equal(123_456, serialPortWrapper.BaudRate);
             Assert.False(serialPortWrapper.RtsEnable);
             Assert.True(serialPortWrapper.DtrEnable);
-            Assert.Equal(2_000, serialPortWrapper.WriteTimeout);
+            Assert.Equal(500, serialPortWrapper.WriteTimeout);
         }
     }
 }
