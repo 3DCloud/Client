@@ -5,6 +5,7 @@ using System.Text.Json;
 using System.Text.Json.Serialization;
 using System.Threading;
 using System.Threading.Tasks;
+using Serilog.Events;
 
 namespace Print3DCloud.Client.Configuration
 {
@@ -20,6 +21,10 @@ namespace Print3DCloud.Client.Configuration
         {
             WriteIndented = true,
             IgnoreReadOnlyProperties = false,
+            Converters =
+            {
+                new JsonStringEnumConverter(),
+            },
         };
 
         /// <summary>
@@ -28,9 +33,10 @@ namespace Print3DCloud.Client.Configuration
         public static string FilePath => Path.Join(Directory.GetCurrentDirectory(), "config.json");
 
         /// <summary>
-        /// Gets or sets the server host (domain name + port).
+        /// Gets the server host (domain name + port).
         /// </summary>
-        public string? ServerHost { get; set; }
+        [JsonInclude]
+        public string? ServerHost { get; private set; }
 
         /// <summary>
         /// Gets the client's GUID.
@@ -43,6 +49,24 @@ namespace Print3DCloud.Client.Configuration
         /// </summary>
         [JsonInclude]
         public string Secret { get; private set; } = GenerateRandomBase64String();
+
+        /// <summary>
+        /// Gets the secret token to use when communicating with Rollbar for error reporting.
+        /// </summary>
+        [JsonInclude]
+        public string? RollbarAccessToken { get; private set; }
+
+        /// <summary>
+        /// Gets the log level to use when logging messages to console.
+        /// </summary>
+        [JsonInclude]
+        public LogEventLevel ConsoleLogLevel { get; private set; } = LogEventLevel.Debug;
+
+        /// <summary>
+        /// Gets the log level to use when logging messages to console.
+        /// </summary>
+        [JsonInclude]
+        public LogEventLevel RollbarLogLevel { get; private set; } = LogEventLevel.Information;
 
         /// <summary>
         /// Loads the configuration from disk as an asynchronous task.
@@ -73,7 +97,7 @@ namespace Print3DCloud.Client.Configuration
 
         private static string GenerateRandomBase64String()
         {
-            var bytes = new byte[36];
+            byte[] bytes = new byte[36];
             RandomNumberGenerator.Create().GetBytes(bytes);
             return Convert.ToBase64String(bytes).Replace('+', '-').Replace('/', '_');
         }

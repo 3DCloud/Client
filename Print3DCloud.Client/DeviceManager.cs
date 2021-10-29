@@ -18,7 +18,7 @@ namespace Print3DCloud.Client
     /// <summary>
     /// Manages discovery of devices and assignment of devices to printers.
     /// </summary>
-    internal class DeviceManager
+    internal class DeviceManager : IHostedService
     {
         private const string PrinterConfigurationActionName = "printer_configuration";
         private const int ScanDevicesIntervalMs = 1_000;
@@ -72,6 +72,14 @@ namespace Print3DCloud.Client
         {
             await this.actionCableClient.ConnectAsync(cancellationToken);
             await this.subscription.SubscribeAsync(cancellationToken);
+        }
+
+        /// <inheritdoc/>
+        public Task StopAsync(CancellationToken cancellationToken)
+        {
+            // TODO: wait for tasks to complete?
+            this.cancellationTokenSource?.Cancel();
+            return Task.CompletedTask;
         }
 
         private async void Subscription_Subscribed()

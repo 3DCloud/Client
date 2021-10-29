@@ -6,6 +6,10 @@ using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Logging;
 using Print3DCloud.Client.Configuration;
+using Rollbar;
+using Rollbar.DTOs;
+using Rollbar.PlugIns.Serilog;
+using Serilog;
 
 namespace Print3DCloud.Client
 {
@@ -25,43 +29,72 @@ namespace Print3DCloud.Client
 
             await config.SaveAsync(CancellationToken.None);
 
-            using IHost host = CreateHostBuilder(args, config).Build();
+            using IHost host = CreateHostBuilder(args, config);
             IServiceProvider services = host.Services;
 
             ILogger<Program> logger = services.GetRequiredService<ILogger<Program>>();
 
             if (string.IsNullOrWhiteSpace(config.ServerHost))
             {
-                logger.LogError($"Server host is empty; shutting down");
+                logger.LogError("Server host is empty; shutting down");
                 return;
             }
 
-            await services.GetRequiredService<DeviceManager>().StartAsync(CancellationToken.None).ConfigureAwait(false);
             await host.RunAsync();
+
+            logger.LogInformation("Shutting down");
+
             await config.SaveAsync(CancellationToken.None);
+
+            logger.LogInformation("Shut down");
         }
 
-        private static IHostBuilder CreateHostBuilder(string[] args, Config config)
+        private static IHost CreateHostBuilder(string[] args, Config config)
         {
             return Host.CreateDefaultBuilder(args)
-                .ConfigureServices(services =>
+                .ConfigureServices((services) => ConfigureServices(services, config))
+                .UseSerilog((context, loggerConfiguration) => ConfigureSerilog(context, loggerConfiguration, config))
+                .Build();
+        }
+
+        private static void ConfigureServices(IServiceCollection services, Config config)
+        {
+            services.AddSingleton((serviceProvider) =>
+            {
+                Config resolvedConfig = serviceProvider.GetRequiredService<Config>();
+                ActionCableClient actionCableClient = new(serviceProvider.GetRequiredService<ILogger<ActionCableClient>>(), new Uri($"ws://{resolvedConfig.ServerHost}/cable"), "3DCloud-Client");
+
+                actionCableClient.AdditionalHeaders.Add(("X-Client-Id", resolvedConfig.ClientId.ToString()));
+                actionCableClient.AdditionalHeaders.Add(("X-Client-Secret", resolvedConfig.Secret));
+
+                return actionCableClient;
+            });
+
+            services.AddSingleton(config);
+            services.AddSingleton<IHostedService, DeviceManager>();
+        }
+
+        private static void ConfigureSerilog(HostBuilderContext context, LoggerConfiguration loggerConfiguration, Config config)
+        {
+            loggerConfiguration
+                .Enrich.FromLogContext()
+                .WriteTo.Console(config.ConsoleLogLevel);
+
+            if (!string.IsNullOrEmpty(config.RollbarAccessToken))
+            {
+                RollbarConfig rollbarConfig = new()
                 {
-                    services.AddLogging(builder => builder.SetMinimumLevel(LogLevel.Trace).AddConsole());
-
-                    services.AddSingleton((serviceProvider) =>
+                    AccessToken = config.RollbarAccessToken,
+                    Environment = context.HostingEnvironment.EnvironmentName,
+                    Person = new Person
                     {
-                        Config resolvedConfig = serviceProvider.GetRequiredService<Config>();
-                        ActionCableClient actionCableClient = new(serviceProvider.GetRequiredService<ILogger<ActionCableClient>>(), new Uri($"ws://{resolvedConfig.ServerHost}/cable"), "3DCloud-Client");
+                        Id = config.ClientId.ToString(),
+                    },
+                };
 
-                        actionCableClient.AdditionalHeaders.Add(("X-Client-Id", resolvedConfig.ClientId.ToString()));
-                        actionCableClient.AdditionalHeaders.Add(("X-Client-Secret", resolvedConfig.Secret));
-
-                        return actionCableClient;
-                    });
-
-                    services.AddSingleton(config);
-                    services.AddSingleton<DeviceManager>();
-                });
+                loggerConfiguration
+                    .WriteTo.RollbarSink(rollbarConfig, config.RollbarLogLevel);
+            }
         }
     }
 }
