@@ -36,7 +36,7 @@ namespace Print3DCloud.Client.Configuration
         /// Gets the server host (domain name + port).
         /// </summary>
         [JsonInclude]
-        public string? ServerHost { get; private set; }
+        public string ServerHost { get; private set; } = "localhost:3000";
 
         /// <summary>
         /// Gets the client's GUID.
