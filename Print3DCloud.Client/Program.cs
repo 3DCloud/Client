@@ -7,7 +7,6 @@ using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Logging;
 using Print3DCloud.Client.Configuration;
 using Rollbar;
-using Rollbar.DTOs;
 using Rollbar.PlugIns.Serilog;
 using Serilog;
 
@@ -40,7 +39,14 @@ namespace Print3DCloud.Client
                 return;
             }
 
-            await host.RunAsync();
+            try
+            {
+                await host.RunAsync();
+            }
+            catch (Exception ex)
+            {
+                RollbarLocator.RollbarInstance.AsBlockingLogger(TimeSpan.FromMinutes(1)).Critical(ex);
+            }
 
             logger.LogInformation("Shutting down");
 
@@ -86,7 +92,7 @@ namespace Print3DCloud.Client
                 {
                     AccessToken = config.RollbarAccessToken,
                     Environment = context.HostingEnvironment.EnvironmentName,
-                    Person = new Person
+                    Person = new Rollbar.DTOs.Person
                     {
                         Id = config.ClientId.ToString(),
                     },
