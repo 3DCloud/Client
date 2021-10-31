@@ -22,10 +22,14 @@ namespace Print3DCloud.Client.Printers.Marlin
 
         private const string ReportTemperaturesCommand = "M105";
         private const string FirmwareInfoCommand = "M115";
+        private const string ReportSettingsCommand = "M503";
         private const string AutomaticTemperatureReportingCommand = "M155 S{0}";
         private const int TemperatureReportingIntervalSeconds = 1;
         private const int MaxConnectRetries = 5;
+        private const int RetryConnectDelayMs = 1000;
 
+        private static readonly Regex PerAxisCommandRegex = new(@"X(\d+(?:\.\d+)?) Y(\d+(?:\.\d+)?) Z(\d+(?:\.\d+)?) E(\d+(?:\.\d+)?)");
+        private static readonly Regex AccelerationCommandRegex = new(@"P(\d+(?:\.\d+)?) R(\d+(?:\.\d+)?) T(\d+(?:\.\d+)?)");
         private static readonly Regex FirmwareInfoRegex = new(@"^FIRMWARE_NAME:(?<firmware_name>.*) SOURCE_CODE_URL:.* PROTOCOL_VERSION:.* MACHINE_TYPE:.* EXTRUDER_COUNT:(?<extruder_count>\d+) UUID:(?<uuid>.*)$");
         private static readonly Regex TemperaturesRegex = new(@"(?<sensor>B|T\d?):(?<current>[\d\.]+) \/(?<target>[\d\.]+)");
 
@@ -64,6 +68,11 @@ namespace Print3DCloud.Client.Printers.Marlin
         /// <inheritdoc/>
         public PrinterTemperatures? Temperatures { get; private set; }
 
+        /// <summary>
+        /// Gets the printer's settings.
+        /// </summary>
+        public MarlinSettings? Settings { get; private set; }
+
         /// <inheritdoc/>
         public async Task ConnectAsync(CancellationToken cancellationToken)
         {
@@ -98,22 +107,25 @@ namespace Print3DCloud.Client.Printers.Marlin
                 }
                 catch (Exception ex)
                 {
-                    this.logger.LogError("Failed to connect to printer");
-                    this.logger.LogError(ex.ToString());
+                    this.logger.LogError("Failed to connect to printer\n{Exception}", ex);
 
-                    if (++tries > MaxConnectRetries)
+                    if (++tries >= MaxConnectRetries)
                     {
+                        this.State = PrinterState.Disconnected;
                         throw;
                     }
+
+                    await Task.Delay(RetryConnectDelayMs, cancellationToken);
                 }
             }
 
-            this.serialCommandManager = serialCommandManager;
-
             this.backgroundTaskCancellationTokenSource = new CancellationTokenSource();
 
+            this.Settings = await this.GetSettingsAsync(serialCommandManager, cancellationToken);
             MarlinFirmwareInfo firmwareInfo =
-                await this.GetFirmwareInfoAsync(this.serialCommandManager, cancellationToken);
+                await this.GetFirmwareInfoAsync(serialCommandManager, cancellationToken);
+
+            this.serialCommandManager = serialCommandManager;
 
             this.receiveLoopTask = Task.Run(() => this.ReceiveLoop(this.backgroundTaskCancellationTokenSource.Token), cancellationToken).ContinueWith(t => this.HandleTaskCompletedAsync(t, "Receive loop"), CancellationToken.None);
 
@@ -310,6 +322,113 @@ namespace Print3DCloud.Client.Printers.Marlin
             double currentTemperature = double.Parse(match.Groups["current"].Value, CultureInfo.InvariantCulture);
             double targetTemperature = double.Parse(match.Groups["target"].Value, CultureInfo.InvariantCulture);
             return new TemperatureSensor(sensor, currentTemperature, targetTemperature);
+        }
+
+        private async Task<MarlinSettings> GetSettingsAsync(SerialCommandManager serialCommandManager, CancellationToken cancellationToken)
+        {
+            this.logger.LogTrace("Getting settings");
+
+            Task sendCommandTask = serialCommandManager.SendCommandAsync(ReportSettingsCommand, cancellationToken);
+            MarlinMessage message;
+            MarlinSettings settings = new();
+
+            do
+            {
+                cancellationToken.ThrowIfCancellationRequested();
+
+                message = await serialCommandManager.ReceiveLineAsync(cancellationToken);
+
+                if (message.Type != MarlinMessageType.Message)
+                {
+                    continue;
+                }
+
+                string line = message.Content.Trim();
+
+                if (line.StartsWith(';'))
+                {
+                    continue;
+                }
+
+                int index = line.IndexOf(';');
+
+                if (index >= 0)
+                {
+                    line = line[..index].Trim();
+                }
+
+                while (line.StartsWith("echo:"))
+                {
+                    line = line[5..].Trim();
+                }
+
+                int spaceIndex = line.IndexOf(' ');
+
+                // we're only interested in G-code commands with arguments
+                if (spaceIndex == -1)
+                {
+                    continue;
+                }
+
+                string command = line[..spaceIndex];
+
+                Match match;
+
+                switch (command)
+                {
+                    case "M201":
+                        match = PerAxisCommandRegex.Match(line);
+
+                        if (!match.Success)
+                        {
+                            continue;
+                        }
+
+                        settings.MaximumAcceleration = new PerAxis(
+                            double.Parse(match.Groups[1].Value, CultureInfo.InvariantCulture),
+                            double.Parse(match.Groups[2].Value, CultureInfo.InvariantCulture),
+                            double.Parse(match.Groups[3].Value, CultureInfo.InvariantCulture),
+                            double.Parse(match.Groups[4].Value, CultureInfo.InvariantCulture));
+
+                        break;
+
+                    case "M203":
+                        match = PerAxisCommandRegex.Match(line);
+
+                        if (!match.Success)
+                        {
+                            continue;
+                        }
+
+                        settings.MaximumFeedrates = new PerAxis(
+                            double.Parse(match.Groups[1].Value, CultureInfo.InvariantCulture),
+                            double.Parse(match.Groups[2].Value, CultureInfo.InvariantCulture),
+                            double.Parse(match.Groups[3].Value, CultureInfo.InvariantCulture),
+                            double.Parse(match.Groups[4].Value, CultureInfo.InvariantCulture));
+
+                        break;
+
+                    case "M204":
+                        match = AccelerationCommandRegex.Match(line);
+
+                        if (!match.Success)
+                        {
+                            continue;
+                        }
+
+                        settings.Acceleration = new Acceleration(
+                            double.Parse(match.Groups[1].Value, CultureInfo.InvariantCulture),
+                            double.Parse(match.Groups[2].Value, CultureInfo.InvariantCulture),
+                            double.Parse(match.Groups[3].Value, CultureInfo.InvariantCulture));
+
+                        break;
+                }
+            }
+            while (message.Type != MarlinMessageType.CommandAcknowledgement && !sendCommandTask.IsCompleted);
+
+            await sendCommandTask;
+
+            return settings;
         }
 
         private async Task<MarlinFirmwareInfo> GetFirmwareInfoAsync(SerialCommandManager serialCommandManager, CancellationToken cancellationToken)

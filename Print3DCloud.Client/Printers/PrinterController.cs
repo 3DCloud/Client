@@ -87,6 +87,7 @@ namespace Print3DCloud.Client.Printers
             if (disposing)
             {
                 this.subscription.Dispose();
+                this.printer.Dispose();
             }
         }
 
