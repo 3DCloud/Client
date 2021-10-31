@@ -27,15 +27,16 @@ namespace Print3DCloud.Client
         private readonly ILogger<DeviceManager> logger;
         private readonly IServiceProvider serviceProvider;
         private readonly ActionCableClient actionCableClient;
-        private readonly IHostApplicationLifetime hostApplicationLifetime;
 
+#if DEBUG
         private readonly string dummyPrinterId;
+#endif
+
         private readonly IActionCableSubscription subscription;
         private readonly Dictionary<string, SerialPortInfo> discoveredSerialDevices = new();
         private readonly Dictionary<string, PrinterController> printers = new();
         private readonly Random random = new();
-
-        private CancellationTokenSource? cancellationTokenSource;
+        private readonly CancellationTokenSource cancellationTokenSource = new();
 
         /// <summary>
         /// Initializes a new instance of the <see cref="DeviceManager"/> class.
@@ -44,17 +45,18 @@ namespace Print3DCloud.Client
         /// <param name="serviceProvider">Service provider to use when creating <see cref="IPrinter"/> instances.</param>
         /// <param name="actionCableClient">The <see cref="ActionCableClient"/> to use to communicate with the server.</param>
         /// <param name="config">The application's configuration.</param>
-        /// <param name="hostApplicationLifetime">Instance implementing <see cref="IHostApplicationLifetime"/> to use for application lifetime events.</param>
-        public DeviceManager(ILogger<DeviceManager> logger, IServiceProvider serviceProvider, ActionCableClient actionCableClient, Config config, IHostApplicationLifetime hostApplicationLifetime)
+        public DeviceManager(ILogger<DeviceManager> logger, IServiceProvider serviceProvider, ActionCableClient actionCableClient, Config config)
         {
             this.logger = logger;
             this.serviceProvider = serviceProvider;
             this.actionCableClient = actionCableClient;
-            this.hostApplicationLifetime = hostApplicationLifetime;
 
             this.actionCableClient.Disconnected += this.ActionCableClient_Disconnected;
 
+#if DEBUG
             this.dummyPrinterId = $"{config.ClientId}_dummy";
+#endif
+
             this.subscription = this.actionCableClient.GetSubscription(new ClientIdentifier(config.ClientId, config.Secret));
 
             this.subscription.Subscribed += this.Subscription_Subscribed;
@@ -78,39 +80,19 @@ namespace Print3DCloud.Client
         public Task StopAsync(CancellationToken cancellationToken)
         {
             // TODO: wait for tasks to complete?
-            this.cancellationTokenSource?.Cancel();
+            this.cancellationTokenSource.Cancel();
             return Task.CompletedTask;
         }
 
         private async void Subscription_Subscribed()
         {
             this.logger.LogInformation("Subscribed to client channel");
-
-            this.cancellationTokenSource = CancellationTokenSource.CreateLinkedTokenSource(this.hostApplicationLifetime.ApplicationStopping);
-
-            try
-            {
-                await this.PollDevices(this.cancellationTokenSource.Token);
-            }
-            catch (OperationCanceledException)
-            {
-            }
-            catch (Exception ex)
-            {
-                this.logger.LogError("Device polling task errored; exiting\n{Exception}", ex);
-                this.hostApplicationLifetime.StopApplication();
-            }
-
-            if (this.subscription.State == SubscriptionState.Subscribed)
-            {
-                await this.subscription.Unsubscribe(CancellationToken.None);
-            }
+            await this.PollDevices(this.cancellationTokenSource.Token);
         }
 
         private void Subscription_Unsubscribed()
         {
             this.logger.LogInformation("Unsubscribed from client channel");
-            this.cancellationTokenSource?.Cancel();
         }
 
         /// <summary>
@@ -133,11 +115,7 @@ namespace Print3DCloud.Client
 
             IPrinter printer;
 
-            if (hardwareIdentifier == this.dummyPrinterId)
-            {
-                printer = ActivatorUtilities.CreateInstance<DummyPrinter>(this.serviceProvider);
-            }
-            else if (this.discoveredSerialDevices.TryGetValue(hardwareIdentifier, out SerialPortInfo portInfo))
+            if (this.discoveredSerialDevices.TryGetValue(hardwareIdentifier, out SerialPortInfo portInfo))
             {
                 string driver = message.Printer.PrinterDefinition.Driver;
 
@@ -155,6 +133,12 @@ namespace Print3DCloud.Client
                         return;
                 }
             }
+#if DEBUG
+            else if (hardwareIdentifier == this.dummyPrinterId)
+            {
+                printer = ActivatorUtilities.CreateInstance<DummyPrinter>(this.serviceProvider);
+            }
+#endif
             else
             {
                 this.logger.LogError("Unknown printer '{HardwareIdentifier}'", hardwareIdentifier);
@@ -167,7 +151,7 @@ namespace Print3DCloud.Client
 
             try
             {
-                await Task.Run(() => printerController.SubscribeAndConnect(this.cancellationTokenSource?.Token ?? CancellationToken.None));
+                await Task.Run(() => printerController.SubscribeAndConnect(this.cancellationTokenSource.Token));
 
                 this.logger.LogInformation("Printer '{HardwareIdentifier}' set up successfully", hardwareIdentifier);
             }
@@ -181,10 +165,12 @@ namespace Print3DCloud.Client
         {
             if (this.subscription.State != SubscriptionState.Subscribed) return;
 
+            #if DEBUG
             if (Environment.GetCommandLineArgs().Contains("--dummy-printer"))
             {
                 await this.subscription.PerformAsync(new DeviceMessage("dummy0", this.dummyPrinterId, false), CancellationToken.None).ConfigureAwait(false);
             }
+            #endif
 
             while (this.subscription.State == SubscriptionState.Subscribed)
             {
@@ -288,8 +274,10 @@ namespace Print3DCloud.Client
 
             this.logger.LogInformation("Cable connection lost, attempting to reconnect in {RetryConnectionDelayMs} ms", RetryConnectionDelayMs);
 
-            await Task.Delay(this.random.Next((int)(RetryConnectionDelayMs * 0.8), (int)(RetryConnectionDelayMs * 1.2)));
-            await this.actionCableClient.ConnectAsync(CancellationToken.None);
+            CancellationToken cancellationToken = this.cancellationTokenSource.Token;
+
+            await Task.Delay(this.random.Next((int)(RetryConnectionDelayMs * 0.8), (int)(RetryConnectionDelayMs * 1.2)), cancellationToken);
+            await this.actionCableClient.ConnectAsync(cancellationToken);
         }
     }
 }
