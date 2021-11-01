@@ -66,7 +66,7 @@ namespace Print3DCloud.Client.Configuration
         /// Gets the log level to use when logging messages to console.
         /// </summary>
         [JsonInclude]
-        public LogEventLevel RollbarLogLevel { get; private set; } = LogEventLevel.Information;
+        public LogEventLevel RollbarLogLevel { get; private set; } = LogEventLevel.Warning;
 
         /// <summary>
         /// Loads the configuration from disk as an asynchronous task.
