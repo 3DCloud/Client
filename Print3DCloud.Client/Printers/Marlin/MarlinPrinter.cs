@@ -99,11 +99,16 @@ namespace Print3DCloud.Client.Printers.Marlin
                     this.serialPort.DiscardInBuffer();
                     this.serialPort.DiscardOutBuffer();
 
-                    serialCommandManager = new SerialCommandManager(this.logger, this.serialPort.BaseStream, Encoding.UTF8, "\n");
+                    serialCommandManager =
+                        new SerialCommandManager(this.logger, this.serialPort.BaseStream, Encoding.UTF8, "\n");
 
                     await serialCommandManager.WaitForStartupAsync(cancellationToken);
 
                     break;
+                }
+                catch (OperationCanceledException)
+                {
+                    throw;
                 }
                 catch (Exception ex)
                 {

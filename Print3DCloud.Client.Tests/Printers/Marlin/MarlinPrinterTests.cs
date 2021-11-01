@@ -2,7 +2,6 @@
 using System.IO;
 using System.Text;
 using System.Text.RegularExpressions;
-using System.Threading;
 using System.Threading.Tasks;
 using Moq;
 using Print3DCloud.Client.Printers;
@@ -30,9 +29,10 @@ namespace Print3DCloud.Client.Tests.Printers.Marlin
 
             sim.RegisterResponse("N0 M110 N0*125", "ok");
             sim.RegisterResponse(
-                new Regex(@"N1 M115\*\d+"),
+                new Regex(@"N\d+ M115\*\d+"),
                 "FIRMWARE_NAME:Marlin 1.1.0 (Github) SOURCE_CODE_URL:https://github.com/MarlinFirmware/Marlin PROTOCOL_VERSION:1.0 MACHINE_TYPE:RepRap EXTRUDER_COUNT:1 UUID:cede2a2f-41a2-4748-9b12-c55c62f367ff\nCap:AUTOREPORT_TEMP:1\nok\n");
             sim.RegisterResponse(new Regex(@"N\d+ M155 S\d+\*\d+"), "ok");
+            sim.RegisterResponse(new Regex(@"N\d+ M503\*\d+"), "ok");
 
             Mock<ISerialPortFactory> serialPortStreamFactoryMock = new();
             serialPortStreamFactoryMock.Setup(f => f.CreateSerialPort(It.IsAny<string>(), It.IsAny<int>())).Returns(() => serialPortStreamMock.Object);
@@ -65,9 +65,10 @@ namespace Print3DCloud.Client.Tests.Printers.Marlin
 
             sim.RegisterResponse("N0 M110 N0*125", "ok");
             sim.RegisterResponse(
-                new Regex(@"N1 M115\*\d+"),
+                new Regex(@"N\d+ M115\*\d+"),
                 "FIRMWARE_NAME:Marlin 1.1.0 (Github) SOURCE_CODE_URL:https://github.com/MarlinFirmware/Marlin PROTOCOL_VERSION:1.0 MACHINE_TYPE:RepRap EXTRUDER_COUNT:1 UUID:cede2a2f-41a2-4748-9b12-c55c62f367ff\nok\n");
             sim.RegisterResponse(new Regex(@"N\d+ M155 S\d+\*\d+"), "ok");
+            sim.RegisterResponse(new Regex(@"N\d+ M503\*\d+"), "ok");
 
             Mock<ISerialPortFactory> serialPortStreamFactoryMock = new();
             serialPortStreamFactoryMock.Setup(f => f.CreateSerialPort(It.IsAny<string>(), It.IsAny<int>())).Returns(() => serialPortStreamMock.Object);
@@ -208,11 +209,12 @@ namespace Print3DCloud.Client.Tests.Printers.Marlin
             Assert.Collection(
                 sim.GetWrittenLines(),
                 l => Assert.Equal("N0 M110 N0*125", l),
-                l => Assert.Equal("N1 M115*39", l),
-                l => Assert.Equal("N2 M155 S1*98", l),
-                l => Assert.Equal("N3 G0 X0 Y0 Z10*80", l),
-                l => Assert.Equal("N4 M104 S210*98", l),
-                l => Assert.Equal("N5 M140 S60*86", l));
+                l => Assert.Equal("N1 M503*36", l),
+                l => Assert.Equal("N2 M115*36", l),
+                l => Assert.Equal("N3 M155 S1*99", l),
+                l => Assert.Equal("N4 G0 X0 Y0 Z10*87", l),
+                l => Assert.Equal("N5 M104 S210*99", l),
+                l => Assert.Equal("N6 M140 S60*85", l));
         }
 
         [Fact]
@@ -237,7 +239,7 @@ namespace Print3DCloud.Client.Tests.Printers.Marlin
 
             await using MemoryStream printStream = new(Encoding.ASCII.GetBytes("G0 X0 Y0"));
 
-            _ = printer.ExecutePrintAsync(printStream, CancellationToken.None/*TestHelpers.CreateTimeOutToken()*/);
+            _ = printer.ExecutePrintAsync(printStream, TestHelpers.CreateTimeOutToken());
 
             Assert.Equal(PrinterState.Printing, printer.State);
 
@@ -295,8 +297,9 @@ namespace Print3DCloud.Client.Tests.Printers.Marlin
             firmwareInfo += "ok\n";
 
             sim.RegisterResponse("N0 M110 N0*125", "ok");
-            sim.RegisterResponse(new Regex(@"N1 M115\*\d+"), firmwareInfo);
+            sim.RegisterResponse(new Regex(@"N\d+ M115\*\d+"), firmwareInfo);
             sim.RegisterResponse(new Regex(@"N\d+ M155 S\d+\*\d+"), "ok");
+            sim.RegisterResponse(new Regex(@"N\d+ M503\*\d+"), "ok");
 
             Mock<ISerialPortFactory> serialPortStreamFactoryMock = new();
             serialPortStreamFactoryMock.Setup(f => f.CreateSerialPort(It.IsAny<string>(), It.IsAny<int>())).Returns(() => mock.Object);
