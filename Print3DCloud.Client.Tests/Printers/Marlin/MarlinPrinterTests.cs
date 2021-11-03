@@ -1,5 +1,6 @@
 ﻿using System;
 using System.IO;
+using System.Linq;
 using System.Text;
 using System.Text.RegularExpressions;
 using System.Threading.Tasks;
@@ -146,13 +147,9 @@ namespace Print3DCloud.Client.Tests.Printers.Marlin
                 },
                 t =>
                 {
-                    (_, double current, double target) = t;
-                    Assert.Equal(162.94, current);
-                    Assert.Equal(0.00, target);
+                    Assert.Equal(162.94, t.Current);
+                    Assert.Equal(0.00, t.Target);
                 });
-
-            Assert.Equal(136.73, printer.Temperatures.ActiveHotendTemperature.Current);
-            Assert.Equal(210.00, printer.Temperatures.ActiveHotendTemperature.Target);
 
             Assert.NotNull(printer.Temperatures.BedTemperature);
             Assert.Equal(23.98, printer.Temperatures.BedTemperature!.Current);
