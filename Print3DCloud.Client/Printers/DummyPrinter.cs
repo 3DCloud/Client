@@ -33,7 +33,6 @@ namespace Print3DCloud.Client.Printers
 
         /// <inheritdoc/>
         public PrinterTemperatures Temperatures => new(
-            new TemperatureSensor("T0", 210 + this.random.NextDouble() - 0.5, 210),
             new List<TemperatureSensor>
             {
                 new("T0", 210 + this.random.NextDouble() - 0.5, 210),

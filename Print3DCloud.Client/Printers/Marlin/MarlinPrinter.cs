@@ -4,6 +4,7 @@ using System.Diagnostics;
 using System.Globalization;
 using System.IO;
 using System.IO.Ports;
+using System.Linq;
 using System.Text;
 using System.Text.RegularExpressions;
 using System.Threading;
@@ -590,7 +591,8 @@ namespace Print3DCloud.Client.Printers.Marlin
             {
                 (string content, MarlinMessageType type) = await this.serialCommandManager.ReceiveLineAsync(cancellationToken).ConfigureAwait(false);
 
-                if (type != MarlinMessageType.Message)
+                // if temperatures aren't auto-reported, they are reported along with "ok"
+                if (type != MarlinMessageType.Message && type != MarlinMessageType.CommandAcknowledgement)
                 {
                     continue;
                 }
@@ -601,6 +603,7 @@ namespace Print3DCloud.Client.Printers.Marlin
 
         private void HandleLine(string line)
         {
+            Dictionary<string, TemperatureSensor> sensors = new();
             Match match = TemperaturesRegex.Match(line);
 
             if (!match.Success)
@@ -608,31 +611,26 @@ namespace Print3DCloud.Client.Printers.Marlin
                 return;
             }
 
-            // first match is always active hotend
-            TemperatureSensor activeHotendTemperature = GetSensorFromMatch(match);
-
-            TemperatureSensor? bedTemperature = null;
-            List<TemperatureSensor> hotendTemperatures = new();
-
-            match = match.NextMatch();
-
-            while (match.Success)
+            do
             {
-                TemperatureSensor temperature = GetSensorFromMatch(match);
+                TemperatureSensor sensor = GetSensorFromMatch(match);
 
-                if (temperature.Name == "B")
+                if (sensors.ContainsKey(sensor.Name))
                 {
-                    bedTemperature = temperature;
+                    sensors[sensor.Name] = sensor;
                 }
                 else
                 {
-                    hotendTemperatures.Add(temperature);
+                    sensors.Add(sensor.Name, sensor);
                 }
 
                 match = match.NextMatch();
             }
+            while (match.Success);
 
-            this.Temperatures = new PrinterTemperatures(activeHotendTemperature, hotendTemperatures, bedTemperature);
+            sensors.TryGetValue("B", out TemperatureSensor? bedTemperature);
+
+            this.Temperatures = new PrinterTemperatures(sensors.Values.Where(s => s.Name[0] == 'T'), bedTemperature);
         }
     }
 }
