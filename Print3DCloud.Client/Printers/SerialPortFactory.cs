@@ -1,4 +1,4 @@
-﻿using System.Text;
+﻿using System.IO.Ports;
 
 namespace Print3DCloud.Client.Printers
 {
@@ -15,6 +15,7 @@ namespace Print3DCloud.Client.Printers
                 DtrEnable = true,
                 RtsEnable = false,
                 WriteTimeout = 500,
+                Parity = Parity.None,
             };
         }
     }

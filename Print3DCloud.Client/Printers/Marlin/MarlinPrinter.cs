@@ -3,6 +3,7 @@ using System.Collections.Generic;
 using System.Diagnostics;
 using System.Globalization;
 using System.IO;
+using System.IO.Ports;
 using System.Text;
 using System.Text.RegularExpressions;
 using System.Threading;
@@ -103,6 +104,15 @@ namespace Print3DCloud.Client.Printers.Marlin
                     this.logger.LogInformation("Connecting to Marlin printer at port '{PortName}'...", this.portName);
 
                     this.serialPort = this.serialPortFactory.CreateSerialPort(this.portName, this.baudRate);
+
+                    // OctoPrint needs to do this as well, not sure why it's necessary
+                    if (OperatingSystem.IsLinux() && File.Exists("/etc/debian_version"))
+                    {
+                        this.serialPort.Parity = Parity.Odd;
+                        this.serialPort.Open();
+                        this.serialPort.Close();
+                        this.serialPort.Parity = Parity.None;
+                    }
 
                     this.serialPort.Open();
 

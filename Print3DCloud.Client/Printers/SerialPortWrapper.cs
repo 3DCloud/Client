@@ -45,6 +45,13 @@ namespace Print3DCloud.Client.Printers
         }
 
         /// <inheritdoc/>
+        public Parity Parity
+        {
+            get => this.serialPort.Parity;
+            set => this.serialPort.Parity = value;
+        }
+
+        /// <inheritdoc/>
         public string PortName
         {
             get => this.serialPort.PortName;

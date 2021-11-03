@@ -1,5 +1,5 @@
 ﻿using System.IO;
-using System.Text;
+using System.IO.Ports;
 
 namespace Print3DCloud.Client
 {
@@ -22,6 +22,11 @@ namespace Print3DCloud.Client
         /// Gets a value indicating whether the serial port is open or not.
         /// </summary>
         bool IsOpen { get; }
+
+        /// <summary>
+        /// Gets or sets the parity-checking protocol.
+        /// </summary>
+        Parity Parity { get; set; }
 
         /// <summary>
         /// Gets or sets the port for communications, including but not limited to all available COM ports.
