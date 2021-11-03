@@ -41,6 +41,10 @@ namespace Print3DCloud.Client.Printers
             },
             new TemperatureSensor("B", 60 + this.random.NextDouble() - 0.5, 60));
 
+        public int? TimeRemaining { get; }
+
+        public double? Progress { get; }
+
         /// <inheritdoc/>
         public Task ConnectAsync(CancellationToken cancellationToken)
         {
@@ -64,7 +68,7 @@ namespace Print3DCloud.Client.Printers
         }
 
         /// <inheritdoc/>
-        public Task ExecutePrintAsync(Stream fileStream, CancellationToken cancellationToken)
+        public Task ExecutePrintAsync(Stream fileStream, int totalTime, ProgressTimeStep[] steps, CancellationToken cancellationToken)
         {
             this.State = PrinterState.Printing;
 

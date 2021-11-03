@@ -239,7 +239,7 @@ namespace Print3DCloud.Client.Tests.Printers.Marlin
 
             await using MemoryStream printStream = new(Encoding.ASCII.GetBytes("G0 X0 Y0"));
 
-            _ = printer.ExecutePrintAsync(printStream, TestHelpers.CreateTimeOutToken());
+            _ = printer.ExecutePrintAsync(printStream, 0, Array.Empty<ProgressTimeStep>(), TestHelpers.CreateTimeOutToken());
 
             Assert.Equal(PrinterState.Printing, printer.State);
 
@@ -264,7 +264,7 @@ namespace Print3DCloud.Client.Tests.Printers.Marlin
 
             InvalidOperationException exception = await Assert.ThrowsAsync<InvalidOperationException>(async () =>
             {
-                await printer.ExecutePrintAsync(new MemoryStream(), TestHelpers.CreateTimeOutToken());
+                await printer.ExecutePrintAsync(new MemoryStream(), 0, Array.Empty<ProgressTimeStep>(), TestHelpers.CreateTimeOutToken());
             });
 
             Assert.Equal("Printer isn't ready", exception.Message);
