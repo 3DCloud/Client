@@ -256,7 +256,7 @@ namespace Print3DCloud.Client
                     new PrinterStatesMessage(
                         this.printers.ToDictionary(
                             kvp => kvp.Key,
-                            kvp => new PrinterStateWithTemperatures(kvp.Value.State, kvp.Value.Temperatures))),
+                            kvp => new PrinterStateWithTemperatures(kvp.Value.State, kvp.Value.Temperatures, kvp.Value.Progress, kvp.Value.TimeRemaining))),
                     cancellationToken);
             }
             catch (Exception ex)

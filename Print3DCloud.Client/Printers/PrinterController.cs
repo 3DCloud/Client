@@ -1,10 +1,14 @@
 ﻿using System;
+using System.Collections.Generic;
+using System.Globalization;
 using System.IO;
+using System.Linq;
 using System.Net.Http;
 using System.Threading;
 using System.Threading.Tasks;
 using ActionCableSharp;
 using Microsoft.Extensions.Logging;
+using Newtonsoft.Json.Linq;
 using Print3DCloud.Client.ActionCable;
 
 namespace Print3DCloud.Client.Printers
@@ -48,6 +52,10 @@ namespace Print3DCloud.Client.Printers
         /// Gets the <see cref="PrinterTemperatures"/> containing the latest temperatures reported by the printer.
         /// </summary>
         public virtual PrinterTemperatures? Temperatures => this.printer.Temperatures;
+
+        public int? TimeRemaining => this.printer.TimeRemaining;
+
+        public double? Progress => this.printer.Progress;
 
         /// <summary>
         /// Subscribes to the Printer channel with this printer's ID and connects to the printer.
@@ -162,11 +170,62 @@ namespace Print3DCloud.Client.Printers
                     new PrintEventMessage(PrintEventType.Running),
                     CancellationToken.None);
 
+                List<ProgressTimeStep> steps = new();
+                int totalTime = int.MaxValue;
+
+                await using (FileStream fileStream = new(path, FileMode.Open, FileAccess.Read))
+                using (StreamReader reader = new(fileStream))
+                {
+                    while (!reader.EndOfStream)
+                    {
+                        string? line = await reader.ReadLineAsync();
+
+                        if (string.IsNullOrWhiteSpace(line))
+                        {
+                            continue;
+                        }
+
+                        line = line.Trim();
+
+                        if (line.StartsWith(';') && line.Contains(':'))
+                        {
+                            string[] parts = line[1..].Split(':', 2);
+                            string key = parts[0].Trim();
+                            string value = parts[1].Trim();
+
+                            switch (key)
+                            {
+                                // Cura
+                                case "PRINT.TIME":
+                                case "TIME":
+                                    totalTime = int.Parse(value);
+                                    steps.Add(new ProgressTimeStep(0, totalTime));
+                                    break;
+
+                                // Cura
+                                case "TIME_ELAPSED":
+                                    steps.Add(new ProgressTimeStep(fileStream.Position, totalTime - (int)double.Parse(value, CultureInfo.InvariantCulture)));
+                                    break;
+
+                                // ideaMaker
+                                case "PRINTING_TIME":
+                                    totalTime = Math.Max(totalTime, int.Parse(value, CultureInfo.InvariantCulture));
+                                    break;
+
+                                // ideaMaker
+                                case "REMAINING_TIME":
+                                    steps.Add(new ProgressTimeStep(fileStream.Position, int.Parse(value, CultureInfo.InvariantCulture)));
+                                    break;
+                            }
+                        }
+                    }
+                }
+
                 await using (FileStream fileStream = new(path, FileMode.Open, FileAccess.Read))
                 {
                     try
                     {
-                        await this.printer.ExecutePrintAsync(fileStream, CancellationToken.None);
+                        await this.printer.ExecutePrintAsync(fileStream, totalTime, steps.ToArray(), CancellationToken.None);
                         await this.subscription.GuaranteePerformAsync(
                             new PrintEventMessage(PrintEventType.Success),
                             CancellationToken.None);
@@ -194,6 +253,8 @@ namespace Print3DCloud.Client.Printers
 
         private async void AbortPrint(AcknowledgeableMessage message)
         {
+            this.logger.LogInformation("Received abort request");
+
             await this.subscription.GuaranteePerformAsync(new AcknowledgeMessage(message.MessageId), CancellationToken.None);
 
             if (this.printer.State != PrinterState.Printing)

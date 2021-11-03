@@ -21,6 +21,10 @@ namespace Print3DCloud.Client.Printers
         /// </summary>
         PrinterTemperatures? Temperatures { get; }
 
+        int? TimeRemaining { get; }
+
+        double? Progress { get; }
+
         /// <summary>
         /// Connects to the printer.
         /// </summary>
@@ -41,7 +45,7 @@ namespace Print3DCloud.Client.Printers
         /// <param name="stream">The <see cref="Stream"/> containing the file to print.</param>
         /// <param name="cancellationToken">A <see cref="CancellationToken"/> used to propagate notification that the operation should be canceled.</param>
         /// <returns>A <see cref="Task"/> that completes once the print has been started.</returns>
-        Task ExecutePrintAsync(Stream stream, CancellationToken cancellationToken);
+        Task ExecutePrintAsync(Stream stream, int totalTime, ProgressTimeStep[] steps, CancellationToken cancellationToken);
 
         /// <summary>
         /// Pauses the print that is currently running.

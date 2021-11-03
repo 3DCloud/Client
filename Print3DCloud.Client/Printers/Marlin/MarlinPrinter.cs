@@ -1,5 +1,6 @@
 ﻿using System;
 using System.Collections.Generic;
+using System.Diagnostics;
 using System.Globalization;
 using System.IO;
 using System.Text;
@@ -27,6 +28,9 @@ namespace Print3DCloud.Client.Printers.Marlin
         private const int TemperatureReportingIntervalSeconds = 1;
         private const int MaxConnectRetries = 5;
         private const int RetryConnectDelayMs = 1000;
+
+        private static readonly string[] TimeIgnoreCommands = { "G4", "G28", "G29", "M109", "M190" };
+        private static readonly string[] HeatingCommands = { "M109", "M190" };
 
         private static readonly Regex PerAxisCommandRegex = new(@"X(\d+(?:\.\d+)?) Y(\d+(?:\.\d+)?) Z(\d+(?:\.\d+)?) E(\d+(?:\.\d+)?)");
         private static readonly Regex AccelerationCommandRegex = new(@"P(\d+(?:\.\d+)?) R(\d+(?:\.\d+)?) T(\d+(?:\.\d+)?)");
@@ -67,6 +71,12 @@ namespace Print3DCloud.Client.Printers.Marlin
 
         /// <inheritdoc/>
         public PrinterTemperatures? Temperatures { get; private set; }
+
+        /// <inheritdoc/>
+        public int? TimeRemaining { get; private set; }
+
+        /// <inheritdoc/>
+        public double? Progress { get; private set; }
 
         /// <summary>
         /// Gets the printer's settings.
@@ -223,7 +233,7 @@ namespace Print3DCloud.Client.Printers.Marlin
         }
 
         /// <inheritdoc/>
-        public Task ExecutePrintAsync(Stream stream, CancellationToken cancellationToken)
+        public Task ExecutePrintAsync(Stream stream, int totalTime, ProgressTimeStep[] steps, CancellationToken cancellationToken)
         {
             if (this.State != PrinterState.Ready)
             {
@@ -235,7 +245,7 @@ namespace Print3DCloud.Client.Printers.Marlin
             this.printCancellationTokenSource = cancellationTokenSource;
             this.State = PrinterState.Printing;
 
-            Task task = Task.Run(() => this.RunPrintAsync(stream, cancellationTokenSource.Token), cancellationToken);
+            Task task = Task.Run(() => this.RunPrintAsync(stream, totalTime, steps, cancellationTokenSource.Token), cancellationToken);
 
             this.printTask = task.ContinueWith((t) => this.HandleTaskCompletedAsync(t, "Print"), cancellationToken);
 
@@ -489,8 +499,11 @@ namespace Print3DCloud.Client.Printers.Marlin
             return info;
         }
 
-        private async Task RunPrintAsync(Stream stream, CancellationToken cancellationToken)
+        private async Task RunPrintAsync(Stream stream, int totalTime, ProgressTimeStep[] steps, CancellationToken cancellationToken)
         {
+            GcodeProgressCalculator progressCalculator = new(totalTime, steps);
+            Stopwatch stopwatch = Stopwatch.StartNew();
+
             // StreamReader takes care of closing the stream properly
             using (StreamReader streamReader = new(stream))
             {
@@ -502,7 +515,28 @@ namespace Print3DCloud.Client.Printers.Marlin
 
                     if (string.IsNullOrWhiteSpace(line)) continue;
 
+                    // TODO: replace with long-blocking command list
+                    if (line.StartsWith("M109") || line.StartsWith("M190"))
+                    {
+                        this.State = PrinterState.Heating;
+                        stopwatch.Stop();
+                    }
+
+                    if (line.StartsWith("G28"))
+                    {
+                        stopwatch.Stop();
+                    }
+
                     await this.SendCommandAsync(line, cancellationToken).ConfigureAwait(false);
+
+                    this.State = PrinterState.Printing;
+                    stopwatch.Start();
+
+                    // Stream.Position doesn't return the actual current position since
+                    // StreamReader buffers in chunks, but it's good enough for our purposes.
+                    TimeEstimate estimate = progressCalculator.GetEstimate(stopwatch.Elapsed.TotalSeconds, stream.Position);
+                    this.TimeRemaining = estimate.TimeRemaining;
+                    this.Progress = estimate.Progress;
                 }
             }
 
