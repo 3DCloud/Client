@@ -84,6 +84,7 @@ namespace Print3DCloud.Client
         {
             loggerConfiguration
                 .Enrich.FromLogContext()
+                .MinimumLevel.Is(config.ConsoleLogLevel)
                 .WriteTo.Console(config.ConsoleLogLevel);
 
             if (!string.IsNullOrEmpty(config.RollbarAccessToken))
