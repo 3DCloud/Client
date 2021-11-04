@@ -1,14 +1,10 @@
 ﻿using System;
-using System.Collections.Generic;
-using System.Globalization;
 using System.IO;
-using System.Linq;
 using System.Net.Http;
 using System.Threading;
 using System.Threading.Tasks;
 using ActionCableSharp;
 using Microsoft.Extensions.Logging;
-using Newtonsoft.Json.Linq;
 using Print3DCloud.Client.ActionCable;
 
 namespace Print3DCloud.Client.Printers
@@ -18,6 +14,8 @@ namespace Print3DCloud.Client.Printers
     /// </summary>
     internal class PrinterController : IDisposable
     {
+        private const int ConnectTimeOutDelayMs = 10_000;
+
         private readonly IPrinter printer;
         private readonly IActionCableSubscription subscription;
         private readonly ILogger<PrinterController> logger;
@@ -37,9 +35,10 @@ namespace Print3DCloud.Client.Printers
             this.subscription = subscription;
 
             this.subscription.RegisterCallback<SendCommandMessage>("send_command", this.SendCommand);
-            this.subscription.RegisterCallback<AcknowledgeableMessage>("reconnect", this.ReconnectPrinter);
-            this.subscription.RegisterCallback<StartPrintMessage>("start_print", this.StartPrint);
-            this.subscription.RegisterCallback<AcknowledgeableMessage>("abort_print", this.AbortPrint);
+            this.subscription.RegisterAcknowledgeableCallback<AcknowledgeableMessage>("reconnect", this.HandleReconnectPrinterMessage);
+            this.subscription.RegisterAcknowledgeableCallback<StartPrintMessage>("start_print", this.HandleStartPrintMessage);
+            this.subscription.RegisterAcknowledgeableCallback<AcknowledgeableMessage>("abort_print", this.HandleAbortPrintMessage);
+            this.subscription.RegisterAcknowledgeableCallback<UltiGCodeSettingsMessage>("ultigcode_settings", this.HandleUltiGCodeSettingsMessage);
         }
 
         /// <summary>
@@ -106,7 +105,7 @@ namespace Print3DCloud.Client.Printers
             await this.printer.SendCommandAsync(message.Command, CancellationToken.None);
         }
 
-        private async void ReconnectPrinter(AcknowledgeableMessage message)
+        private async void HandleReconnectPrinterMessage(AcknowledgeableMessage message, AcknowledgeCallback ack)
         {
             this.logger.LogInformation("Attempting to reconnect");
 
@@ -117,17 +116,17 @@ namespace Print3DCloud.Client.Printers
                     await this.printer.DisconnectAsync(CancellationToken.None);
                 }
 
-                await this.printer.ConnectAsync(CancellationToken.None);
+                await this.printer.ConnectAsync(new CancellationTokenSource(ConnectTimeOutDelayMs).Token);
 
-                await this.subscription.GuaranteePerformAsync(new AcknowledgeMessage(message.MessageId), CancellationToken.None);
+                ack();
             }
             catch (Exception ex)
             {
-                await this.subscription.GuaranteePerformAsync(new AcknowledgeMessage(message.MessageId, ex), CancellationToken.None);
+                ack(ex);
             }
         }
 
-        private async void StartPrint(StartPrintMessage message)
+        private async void HandleStartPrintMessage(StartPrintMessage message, AcknowledgeCallback ack)
         {
             if (this.State != PrinterState.Ready)
             {
@@ -136,13 +135,12 @@ namespace Print3DCloud.Client.Printers
 
             this.logger.LogInformation("Starting print {PrintId} from file at '{DownloadUrl}'", message.PrintId, message.DownloadUrl);
 
+            ack();
+
             try
             {
                 this.downloading = true;
 
-                await this.subscription.GuaranteePerformAsync(
-                    new AcknowledgeMessage(message.MessageId),
-                    CancellationToken.None);
                 await this.subscription.GuaranteePerformAsync(
                     new PrintEventMessage(PrintEventType.Downloading),
                     CancellationToken.None);
@@ -170,62 +168,11 @@ namespace Print3DCloud.Client.Printers
                     new PrintEventMessage(PrintEventType.Running),
                     CancellationToken.None);
 
-                List<ProgressTimeStep> steps = new();
-                int totalTime = int.MaxValue;
-
-                await using (FileStream fileStream = new(path, FileMode.Open, FileAccess.Read))
-                using (StreamReader reader = new(fileStream))
-                {
-                    while (!reader.EndOfStream)
-                    {
-                        string? line = await reader.ReadLineAsync();
-
-                        if (string.IsNullOrWhiteSpace(line))
-                        {
-                            continue;
-                        }
-
-                        line = line.Trim();
-
-                        if (line.StartsWith(';') && line.Contains(':'))
-                        {
-                            string[] parts = line[1..].Split(':', 2);
-                            string key = parts[0].Trim();
-                            string value = parts[1].Trim();
-
-                            switch (key)
-                            {
-                                // Cura
-                                case "PRINT.TIME":
-                                case "TIME":
-                                    totalTime = int.Parse(value);
-                                    steps.Add(new ProgressTimeStep(0, totalTime));
-                                    break;
-
-                                // Cura
-                                case "TIME_ELAPSED":
-                                    steps.Add(new ProgressTimeStep(fileStream.Position, totalTime - (int)double.Parse(value, CultureInfo.InvariantCulture)));
-                                    break;
-
-                                // ideaMaker
-                                case "PRINTING_TIME":
-                                    totalTime = Math.Max(totalTime, int.Parse(value, CultureInfo.InvariantCulture));
-                                    break;
-
-                                // ideaMaker
-                                case "REMAINING_TIME":
-                                    steps.Add(new ProgressTimeStep(fileStream.Position, int.Parse(value, CultureInfo.InvariantCulture)));
-                                    break;
-                            }
-                        }
-                    }
-                }
-
                 await using (FileStream fileStream = new(path, FileMode.Open, FileAccess.Read))
                 {
                     try
                     {
-                        await this.printer.ExecutePrintAsync(fileStream, totalTime, steps.ToArray(), CancellationToken.None);
+                        await this.printer.ExecutePrintAsync(fileStream, CancellationToken.None);
                         await this.subscription.GuaranteePerformAsync(
                             new PrintEventMessage(PrintEventType.Success),
                             CancellationToken.None);
@@ -251,11 +198,11 @@ namespace Print3DCloud.Client.Printers
             }
         }
 
-        private async void AbortPrint(AcknowledgeableMessage message)
+        private async void HandleAbortPrintMessage(AcknowledgeableMessage message, AcknowledgeCallback ack)
         {
             this.logger.LogInformation("Received abort request");
 
-            await this.subscription.GuaranteePerformAsync(new AcknowledgeMessage(message.MessageId), CancellationToken.None);
+            ack();
 
             if (this.printer.State != PrinterState.Printing)
             {
@@ -274,6 +221,19 @@ namespace Print3DCloud.Client.Printers
             await this.subscription.GuaranteePerformAsync(
                 new PrintEventMessage(PrintEventType.Canceled),
                 CancellationToken.None);
+        }
+
+        private void HandleUltiGCodeSettingsMessage(UltiGCodeSettingsMessage message, AcknowledgeCallback ack)
+        {
+            if (this.printer is IUltiGCodePrinter ultiGCodePrinter)
+            {
+                ultiGCodePrinter.UltiGCodeSettings = message.UltiGCodeSettings;
+                ack();
+            }
+            else
+            {
+                ack(new Exception("Printer doesn't support UltiGCode"));
+            }
         }
     }
 }

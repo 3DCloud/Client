@@ -67,7 +67,7 @@ namespace Print3DCloud.Client.Printers
         }
 
         /// <inheritdoc/>
-        public Task ExecutePrintAsync(Stream fileStream, int totalTime, ProgressTimeStep[] steps, CancellationToken cancellationToken)
+        public Task ExecutePrintAsync(Stream fileStream, CancellationToken cancellationToken)
         {
             this.State = PrinterState.Printing;
 

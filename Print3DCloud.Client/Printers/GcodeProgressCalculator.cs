@@ -1,11 +1,15 @@
 ﻿using System;
+using System.Collections.Generic;
 
 namespace Print3DCloud.Client.Printers
 {
+    /// <summary>
+    /// Helper class that calculates a print's estimated time left.
+    /// </summary>
     public class GcodeProgressCalculator
     {
         private readonly int totalEstimatedTime;
-        private readonly ProgressTimeStep[] steps;
+        private readonly List<ProgressTimeStep> steps;
 
         private double lastElapsed;
         private double durationFactor = 1;
@@ -16,7 +20,7 @@ namespace Print3DCloud.Client.Printers
         /// </summary>
         /// <param name="totalEstimatedTime">The total estimated time the print will take.</param>
         /// <param name="steps">The print progress steps.</param>
-        public GcodeProgressCalculator(int totalEstimatedTime, ProgressTimeStep[] steps)
+        public GcodeProgressCalculator(int totalEstimatedTime, List<ProgressTimeStep> steps)
         {
             this.totalEstimatedTime = totalEstimatedTime;
             this.steps = steps;
@@ -30,6 +34,11 @@ namespace Print3DCloud.Client.Printers
         /// <returns>A <see cref="TimeEstimate"/> containing the estimate.</returns>
         public TimeEstimate GetEstimate(double elapsedSeconds, long bytePosition)
         {
+            if (this.steps.Count == 0)
+            {
+                return new TimeEstimate(0, 0);
+            }
+
             if (bytePosition <= this.steps[0].BytePosition)
             {
                 return new TimeEstimate(this.steps[0].TimeRemaining, 0);

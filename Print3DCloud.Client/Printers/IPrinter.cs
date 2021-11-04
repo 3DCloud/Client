@@ -21,8 +21,14 @@ namespace Print3DCloud.Client.Printers
         /// </summary>
         PrinterTemperatures? Temperatures { get; }
 
+        /// <summary>
+        /// Gets the estimated amount of time remaining for the ongoing print.
+        /// </summary>
         int? TimeRemaining { get; }
 
+        /// <summary>
+        /// Gets the estimated percentage completion of the ongoing print.
+        /// </summary>
         double? Progress { get; }
 
         /// <summary>
@@ -45,7 +51,7 @@ namespace Print3DCloud.Client.Printers
         /// <param name="stream">The <see cref="Stream"/> containing the file to print.</param>
         /// <param name="cancellationToken">A <see cref="CancellationToken"/> used to propagate notification that the operation should be canceled.</param>
         /// <returns>A <see cref="Task"/> that completes once the print has been started.</returns>
-        Task ExecutePrintAsync(Stream stream, int totalTime, ProgressTimeStep[] steps, CancellationToken cancellationToken);
+        Task ExecutePrintAsync(Stream stream, CancellationToken cancellationToken);
 
         /// <summary>
         /// Pauses the print that is currently running.
@@ -75,13 +81,5 @@ namespace Print3DCloud.Client.Printers
         /// <param name="cancellationToken">A <see cref="CancellationToken"/> used to propagate notification that the operation should be canceled.</param>
         /// <returns>A <see cref="Task"/> that completes once the command has been sent.</returns>
         Task SendCommandAsync(string command, CancellationToken cancellationToken);
-
-        /// <summary>
-        /// Sends a block of commands to the printer.
-        /// </summary>
-        /// <param name="commands">The commands to send, separated by a new line.</param>
-        /// <param name="cancellationToken">A <see cref="CancellationToken"/> used to propagate notification that the operation should be canceled.</param>
-        /// <returns>A <see cref="Task"/> that completes once the commands have been sent.</returns>
-        Task SendCommandBlockAsync(string commands, CancellationToken cancellationToken);
     }
 }

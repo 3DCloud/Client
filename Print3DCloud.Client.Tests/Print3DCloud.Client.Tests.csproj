@@ -38,11 +38,19 @@
   <ItemGroup>
     <None Remove="TestResults/**" />
   </ItemGroup>
+  
+  <ItemGroup>
+    <Content CopyToOutputDirectory="Always" Include="Fixtures/Files/**" />
+  </ItemGroup>
 
   <ItemGroup>
     <Content Include="xunit.runner.json">
       <CopyToOutputDirectory>Always</CopyToOutputDirectory>
     </Content>
+  </ItemGroup>
+
+  <ItemGroup>
+    <Folder Include="Fixtures\Files\SampleGCode" />
   </ItemGroup>
 
 </Project>
