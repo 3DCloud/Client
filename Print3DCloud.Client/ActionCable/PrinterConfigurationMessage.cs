@@ -2,5 +2,5 @@
 
 namespace Print3DCloud.Client.ActionCable
 {
-    internal record PrinterConfigurationMessage(Printer Printer);
+    internal record PrinterConfigurationMessage(string MessageId, Printer Printer) : AcknowledgeableMessage(MessageId);
 }

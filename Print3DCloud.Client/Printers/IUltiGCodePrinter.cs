@@ -8,6 +8,6 @@ namespace Print3DCloud.Client.Printers
         /// <summary>
         /// Gets or sets the settings to use when an UltiGCode print is started.
         /// </summary>
-        public UltiGCodeSettings[] UltiGCodeSettings { get; set; }
+        public UltiGCodeSettings?[] UltiGCodeSettings { get; set; }
     }
 }

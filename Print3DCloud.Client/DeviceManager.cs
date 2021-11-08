@@ -62,7 +62,7 @@ namespace Print3DCloud.Client
             this.subscription.Subscribed += this.Subscription_Subscribed;
             this.subscription.Unsubscribed += this.Subscription_Unsubscribed;
 
-            this.subscription.RegisterCallback<PrinterConfigurationMessage>(PrinterConfigurationActionName, this.HandlePrinterConfigurationMessage);
+            this.subscription.RegisterAcknowledgeableCallback<PrinterConfigurationMessage>(PrinterConfigurationActionName, this.HandlePrinterConfigurationMessage);
         }
 
         /// <summary>
@@ -99,15 +99,28 @@ namespace Print3DCloud.Client
         /// Message indicating a device has been configured as a printer.
         /// </summary>
         /// <param name="message">The received message.</param>
-        private async void HandlePrinterConfigurationMessage(PrinterConfigurationMessage message)
+        private async void HandlePrinterConfigurationMessage(PrinterConfigurationMessage message, AcknowledgeCallback ack)
         {
+            ack();
+
             if (message.Printer.PrinterDefinition == null || message.Printer.Device == null) return;
 
             string hardwareIdentifier = message.Printer.Device.HardwareIdentifier;
 
-            if (this.printers.TryGetValue(hardwareIdentifier, out _))
+            if (this.printers.TryGetValue(hardwareIdentifier, out PrinterController? printerController))
             {
-                this.logger.LogWarning("Printer '{HardwareIdentifier}' is already connected", hardwareIdentifier);
+                this.logger.LogInformation("Printer '{HardwareIdentifier}' is already connected, applying configuration", hardwareIdentifier);
+
+                if (printerController.Printer is IGCodePrinter gCodePrinter)
+                {
+                    gCodePrinter.GCodeSettings = message.Printer.PrinterDefinition.GCodeSettings;
+                }
+
+                if (printerController.Printer is IUltiGCodePrinter ultiGCodePrinter)
+                {
+                    ultiGCodePrinter.UltiGCodeSettings = message.Printer.PrinterDefinition.UltiGCodeSettings;
+                }
+
                 return;
             }
 
@@ -145,8 +158,18 @@ namespace Print3DCloud.Client
                 return;
             }
 
+            if (printer is IGCodePrinter gCodePrinter2)
+            {
+                gCodePrinter2.GCodeSettings = message.Printer.PrinterDefinition.GCodeSettings;
+            }
+
+            if (printer is IUltiGCodePrinter ultiGCodePrinter2)
+            {
+                ultiGCodePrinter2.UltiGCodeSettings = message.Printer.PrinterDefinition.UltiGCodeSettings;
+            }
+
             IActionCableSubscription subscription = this.actionCableClient.GetSubscription(new PrinterIdentifier(hardwareIdentifier));
-            PrinterController printerController = ActivatorUtilities.CreateInstance<PrinterController>(this.serviceProvider, printer, subscription);
+            printerController = ActivatorUtilities.CreateInstance<PrinterController>(this.serviceProvider, printer, subscription);
             this.printers.Add(hardwareIdentifier, printerController);
 
             try

@@ -86,13 +86,11 @@ namespace Print3DCloud.Client.Printers.Marlin
         /// </summary>
         public MarlinSettings? Settings { get; private set; }
 
-        // TODO: get this from the server
         /// <inheritdoc/>
-        public GCodeSettings GCodeSettings { get; set; } = new(AbortGCode: "G28\nM104 S0\nM140 S0\nM84");
+        public GCodeSettings GCodeSettings { get; set; } = new(CancelGCode: "G28\nM104 S0\nM140 S0\nM84");
 
-        // TODO: get this from the server
         /// <inheritdoc/>
-        public UltiGCodeSettings[] UltiGCodeSettings { get; set; } =
+        public UltiGCodeSettings?[] UltiGCodeSettings { get; set; } =
         {
             new("PLA",
                 210,
@@ -204,6 +202,25 @@ namespace Print3DCloud.Client.Printers.Marlin
             return this.serialCommandManager.SendCommandAsync(command, cancellationToken);
         }
 
+        /// <summary>
+        /// Send a block of commands as an asynchronous task.
+        /// </summary>
+        /// <param name="block">Block of commands to send.</param>
+        /// <param name="cancellationToken">A <see cref="CancellationToken"/> used to propagate notification that the operation should be canceled.</param>
+        /// <returns>A <see cref="Task"/> that completes once the command block has been sent.</returns>
+        public async Task SendCommandBlockAsync(string block, CancellationToken cancellationToken)
+        {
+            if (this.serialCommandManager == null)
+            {
+                throw new InvalidOperationException("Printer isn't connected");
+            }
+
+            foreach (string command in block.Split('\n'))
+            {
+                await this.serialCommandManager.SendCommandAsync(command, cancellationToken);
+            }
+        }
+
         /// <inheritdoc/>
         public async Task DisconnectAsync(CancellationToken cancellationToken)
         {
@@ -312,8 +329,12 @@ namespace Print3DCloud.Client.Printers.Marlin
 
             if (this.printTask != null)
             {
-                // TODO: add cancel G-code here
                 await this.printTask;
+            }
+
+            if (this.GCodeSettings.CancelGCode != null)
+            {
+                await this.SendCommandBlockAsync(this.GCodeSettings.CancelGCode, cancellationToken);
             }
 
             this.State = PrinterState.Ready;
@@ -525,6 +546,11 @@ namespace Print3DCloud.Client.Printers.Marlin
 
         private async Task RunPrintAsync(Stream stream, CancellationToken cancellationToken)
         {
+            if (this.GCodeSettings.StartGCode != null)
+            {
+                await this.SendCommandBlockAsync(this.GCodeSettings.StartGCode, cancellationToken);
+            }
+
             // StreamReader takes care of closing the stream properly
             using (GCodeFile gCodeFile = new(stream))
             {
@@ -537,9 +563,9 @@ namespace Print3DCloud.Client.Printers.Marlin
 
                 if (gCodeFile.Flavor == UltiGCodeFlavor)
                 {
-                    this.logger.LogTrace("UltiGCode detected!");
+                    this.logger.LogInformation("UltiGCode detected!");
                     await this.ExecuteUltiGCodePreambleAsync(gCodeFile, cancellationToken);
-                    maxFanSpeedPercent = this.UltiGCodeSettings.Max(s => s.FanSpeed);
+                    maxFanSpeedPercent = this.UltiGCodeSettings.Max(s => s?.FanSpeed ?? 0);
                 }
 
                 Stopwatch stopwatch = Stopwatch.StartNew();
@@ -602,7 +628,11 @@ namespace Print3DCloud.Client.Printers.Marlin
                 }
             }
 
-            // TODO: add completion G-code here
+            if (this.GCodeSettings.EndGCode != null)
+            {
+                await this.SendCommandBlockAsync(this.GCodeSettings.EndGCode, cancellationToken);
+            }
+
             this.State = PrinterState.Ready;
         }
 
@@ -618,7 +648,7 @@ namespace Print3DCloud.Client.Printers.Marlin
         /// <returns>A <see cref="Task"/> that completes once all preamble commands have been sent.</returns>
         private async Task ExecuteUltiGCodePreambleAsync(GCodeFile gCodeFile, CancellationToken cancellationToken)
         {
-            int buildPlateTemperature = this.UltiGCodeSettings.Max(s => s.BuildPlateTemperature);
+            int buildPlateTemperature = this.UltiGCodeSettings.Max(s => s?.BuildPlateTemperature ?? 0);
 
             await this.SendCommandAsync("G28", cancellationToken); // home all axes
             await this.SendCommandAsync("G1 F12000 X5 Y10", cancellationToken); // move to front left corner
@@ -636,7 +666,12 @@ namespace Print3DCloud.Client.Printers.Marlin
                     continue;
                 }
 
-                UltiGCodeSettings settings = this.UltiGCodeSettings[i];
+                UltiGCodeSettings? settings = this.UltiGCodeSettings[i];
+
+                if (settings == null)
+                {
+                    continue;
+                }
 
                 await this.SendCommandAsync(FormattableString.Invariant($"T{i}"), cancellationToken); // switch to extruder at index i
                 await this.SendCommandAsync(FormattableString.Invariant($"M200 D{settings.FilamentDiameter}"), cancellationToken); // set filament diameter
@@ -648,13 +683,14 @@ namespace Print3DCloud.Client.Printers.Marlin
 
             for (int i = 0; i < this.UltiGCodeSettings.Length; i++)
             {
+                UltiGCodeSettings? settings = this.UltiGCodeSettings[i];
+
                 // don't prime if extruder isn't used
-                if (gCodeFile.MaterialAmounts[i].Amount <= 0)
+                if (gCodeFile.MaterialAmounts[i].Amount <= 0 || settings == null)
                 {
                     continue;
                 }
 
-                UltiGCodeSettings settings = this.UltiGCodeSettings[i];
                 double volumeToFilamentLength = 1 / (Math.PI * Math.Pow(settings.FilamentDiameter / 2, 2));
 
                 await this.SendCommandAsync(FormattableString.Invariant($"T{i}"), cancellationToken);
@@ -683,7 +719,13 @@ namespace Print3DCloud.Client.Printers.Marlin
         /// <returns>A <see cref="Task"/> that completes once all postamble commands have been sent.</returns>
         private async Task ExecuteUltiGCodePostambleAsync(int currentExtruder, CancellationToken cancellationToken)
         {
-            UltiGCodeSettings settings = this.UltiGCodeSettings[currentExtruder];
+            UltiGCodeSettings? settings = this.UltiGCodeSettings[currentExtruder];
+
+            if (settings == null)
+            {
+                return;
+            }
+
             double volumeToFilamentLength = 1 / (Math.PI * Math.Pow(settings.FilamentDiameter / 2, 2));
 
             await this.SendCommandAsync("M104 S0", cancellationToken); // turn off extruder header

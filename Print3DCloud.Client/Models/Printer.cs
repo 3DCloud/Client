@@ -1,4 +1,5 @@
 ﻿using System;
+using Print3DCloud.Client.Printers;
 
 namespace Print3DCloud.Client.Models
 {

@@ -115,15 +115,6 @@ namespace Print3DCloud.Client.Printers
         }
 
         /// <inheritdoc/>
-        public async Task SendCommandBlockAsync(string commands, CancellationToken cancellationToken)
-        {
-            foreach (var command in commands.Split('\n', StringSplitOptions.RemoveEmptyEntries))
-            {
-                await this.SendCommandAsync(command.Trim(), cancellationToken);
-            }
-        }
-
-        /// <inheritdoc/>
         public void Dispose()
         {
             this.Dispose(true);
@@ -131,7 +122,7 @@ namespace Print3DCloud.Client.Printers
         }
 
         /// <summary>
-        /// Releases the unmanaged resources used by the System.IO.Ports.SerialPort and optionally releases the managed resources.
+        /// Releases the unmanaged resources used by the <see cref="DummyPrinter"/> and optionally releases the managed resources.
         /// </summary>
         /// <param name="disposing">true to release both managed and unmanaged resources; false to release only unmanaged resources.</param>
         protected void Dispose(bool disposing)
