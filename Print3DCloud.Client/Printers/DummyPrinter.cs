@@ -115,15 +115,6 @@ namespace Print3DCloud.Client.Printers
         }
 
         /// <inheritdoc/>
-        public async Task SendCommandBlockAsync(string commands, CancellationToken cancellationToken)
-        {
-            foreach (var command in commands.Split('\n', StringSplitOptions.RemoveEmptyEntries))
-            {
-                await this.SendCommandAsync(command.Trim(), cancellationToken);
-            }
-        }
-
-        /// <inheritdoc/>
         public void Dispose()
         {
             this.Dispose(true);

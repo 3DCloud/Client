@@ -105,9 +105,20 @@ namespace Print3DCloud.Client
 
             string hardwareIdentifier = message.Printer.Device.HardwareIdentifier;
 
-            if (this.printers.TryGetValue(hardwareIdentifier, out _))
+            if (this.printers.TryGetValue(hardwareIdentifier, out PrinterController? printerController))
             {
-                this.logger.LogWarning("Printer '{HardwareIdentifier}' is already connected", hardwareIdentifier);
+                this.logger.LogInformation("Printer '{HardwareIdentifier}' is already connected, applying configuration", hardwareIdentifier);
+
+                if (printerController.Printer is IGCodePrinter gCodePrinter)
+                {
+                    gCodePrinter.GCodeSettings = message.Printer.PrinterDefinition.GCodeSettings;
+                }
+
+                if (printerController.Printer is IUltiGCodePrinter ultiGCodePrinter)
+                {
+                    ultiGCodePrinter.UltiGCodeSettings = message.Printer.PrinterDefinition.UltiGCodeSettings;
+                }
+
                 return;
             }
 
@@ -145,8 +156,18 @@ namespace Print3DCloud.Client
                 return;
             }
 
+            if (printer is IGCodePrinter gCodePrinter2)
+            {
+                gCodePrinter2.GCodeSettings = message.Printer.PrinterDefinition.GCodeSettings;
+            }
+
+            if (printer is IUltiGCodePrinter ultiGCodePrinter2)
+            {
+                ultiGCodePrinter2.UltiGCodeSettings = message.Printer.PrinterDefinition.UltiGCodeSettings;
+            }
+
             IActionCableSubscription subscription = this.actionCableClient.GetSubscription(new PrinterIdentifier(hardwareIdentifier));
-            PrinterController printerController = ActivatorUtilities.CreateInstance<PrinterController>(this.serviceProvider, printer, subscription);
+            printerController = ActivatorUtilities.CreateInstance<PrinterController>(this.serviceProvider, printer, subscription);
             this.printers.Add(hardwareIdentifier, printerController);
 
             try
