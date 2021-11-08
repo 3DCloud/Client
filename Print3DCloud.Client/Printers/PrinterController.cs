@@ -86,7 +86,7 @@ namespace Print3DCloud.Client.Printers
         }
 
         /// <summary>
-        /// Releases the unmanaged resources used by the System.IO.Ports.SerialPort and optionally releases the managed resources.
+        /// Releases the unmanaged resources used by the <see cref="PrinterController"/> and optionally releases the managed resources.
         /// </summary>
         /// <param name="disposing">true to release both managed and unmanaged resources; false to release only unmanaged resources.</param>
         protected virtual void Dispose(bool disposing)
