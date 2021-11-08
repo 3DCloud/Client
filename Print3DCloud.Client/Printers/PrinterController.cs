@@ -212,15 +212,14 @@ namespace Print3DCloud.Client.Printers
             try
             {
                 await this.printer.AbortPrintAsync(CancellationToken.None);
+                await this.subscription.GuaranteePerformAsync(
+                    new PrintEventMessage(PrintEventType.Canceled),
+                    CancellationToken.None);
             }
             catch (Exception ex)
             {
                 this.logger.LogError("Failed to abort print\n{Exception}", ex);
             }
-
-            await this.subscription.GuaranteePerformAsync(
-                new PrintEventMessage(PrintEventType.Canceled),
-                CancellationToken.None);
         }
 
         private void HandleUltiGCodeSettingsMessage(UltiGCodeSettingsMessage message, AcknowledgeCallback ack)
