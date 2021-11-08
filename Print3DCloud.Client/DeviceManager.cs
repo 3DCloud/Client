@@ -62,7 +62,7 @@ namespace Print3DCloud.Client
             this.subscription.Subscribed += this.Subscription_Subscribed;
             this.subscription.Unsubscribed += this.Subscription_Unsubscribed;
 
-            this.subscription.RegisterCallback<PrinterConfigurationMessage>(PrinterConfigurationActionName, this.HandlePrinterConfigurationMessage);
+            this.subscription.RegisterAcknowledgeableCallback<PrinterConfigurationMessage>(PrinterConfigurationActionName, this.HandlePrinterConfigurationMessage);
         }
 
         /// <summary>
@@ -99,8 +99,10 @@ namespace Print3DCloud.Client
         /// Message indicating a device has been configured as a printer.
         /// </summary>
         /// <param name="message">The received message.</param>
-        private async void HandlePrinterConfigurationMessage(PrinterConfigurationMessage message)
+        private async void HandlePrinterConfigurationMessage(PrinterConfigurationMessage message, AcknowledgeCallback ack)
         {
+            ack();
+
             if (message.Printer.PrinterDefinition == null || message.Printer.Device == null) return;
 
             string hardwareIdentifier = message.Printer.Device.HardwareIdentifier;
