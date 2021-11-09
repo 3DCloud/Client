@@ -118,7 +118,7 @@ namespace Print3DCloud.Client
 
                 if (printerController.Printer is IUltiGCodePrinter ultiGCodePrinter)
                 {
-                    ultiGCodePrinter.UltiGCodeSettings = message.Printer.PrinterDefinition.UltiGCodeSettings;
+                    ultiGCodePrinter.UltiGCodeSettings = message.Printer.UltiGCodeSettings;
                 }
 
                 return;
@@ -165,7 +165,7 @@ namespace Print3DCloud.Client
 
             if (printer is IUltiGCodePrinter ultiGCodePrinter2)
             {
-                ultiGCodePrinter2.UltiGCodeSettings = message.Printer.PrinterDefinition.UltiGCodeSettings;
+                ultiGCodePrinter2.UltiGCodeSettings = message.Printer.UltiGCodeSettings;
             }
 
             IActionCableSubscription subscription = this.actionCableClient.GetSubscription(new PrinterIdentifier(hardwareIdentifier));

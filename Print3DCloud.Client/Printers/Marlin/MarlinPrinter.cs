@@ -90,18 +90,7 @@ namespace Print3DCloud.Client.Printers.Marlin
         public GCodeSettings GCodeSettings { get; set; } = new(CancelGCode: "G28\nM104 S0\nM140 S0\nM84");
 
         /// <inheritdoc/>
-        public UltiGCodeSettings?[] UltiGCodeSettings { get; set; } =
-        {
-            new("PLA",
-                210,
-                60,
-                6.50,
-                20,
-                25,
-                100,
-                100,
-                2.85),
-        };
+        public UltiGCodeSettings?[] UltiGCodeSettings { get; set; } = Array.Empty<UltiGCodeSettings>();
 
         /// <inheritdoc/>
         public async Task ConnectAsync(CancellationToken cancellationToken)
@@ -565,7 +554,9 @@ namespace Print3DCloud.Client.Printers.Marlin
                 {
                     this.logger.LogInformation("UltiGCode detected!");
                     await this.ExecuteUltiGCodePreambleAsync(gCodeFile, cancellationToken);
-                    maxFanSpeedPercent = this.UltiGCodeSettings.Max(s => s?.FanSpeed ?? 0);
+                    maxFanSpeedPercent = this.UltiGCodeSettings.Length > 0
+                        ? this.UltiGCodeSettings.Max(s => s?.FanSpeed ?? 0)
+                        : 0;
                 }
 
                 Stopwatch stopwatch = Stopwatch.StartNew();
@@ -648,6 +639,11 @@ namespace Print3DCloud.Client.Printers.Marlin
         /// <returns>A <see cref="Task"/> that completes once all preamble commands have been sent.</returns>
         private async Task ExecuteUltiGCodePreambleAsync(GCodeFile gCodeFile, CancellationToken cancellationToken)
         {
+            if (this.UltiGCodeSettings.Length == 0)
+            {
+                return;
+            }
+
             int buildPlateTemperature = this.UltiGCodeSettings.Max(s => s?.BuildPlateTemperature ?? 0);
 
             await this.SendCommandAsync("G28", cancellationToken); // home all axes
@@ -661,7 +657,7 @@ namespace Print3DCloud.Client.Printers.Marlin
             for (int i = 0; i < this.UltiGCodeSettings.Length; i++)
             {
                 // skip if extruder isn't used
-                if (gCodeFile.MaterialAmounts[i].Amount <= 0)
+                if (gCodeFile.MaterialAmounts.Count <= i || gCodeFile.MaterialAmounts[i].Amount <= 0)
                 {
                     continue;
                 }
@@ -686,7 +682,7 @@ namespace Print3DCloud.Client.Printers.Marlin
                 UltiGCodeSettings? settings = this.UltiGCodeSettings[i];
 
                 // don't prime if extruder isn't used
-                if (gCodeFile.MaterialAmounts[i].Amount <= 0 || settings == null)
+                if (gCodeFile.MaterialAmounts.Count <= i || gCodeFile.MaterialAmounts[i].Amount <= 0 || settings == null)
                 {
                     continue;
                 }
@@ -707,6 +703,7 @@ namespace Print3DCloud.Client.Printers.Marlin
                 }
             }
 
+            await this.SendCommandAsync("M209 S0", cancellationToken); // disable auto-retract (and reset retraction state)
             await this.SendCommandAsync("G90", cancellationToken);
             await this.SendCommandAsync("G92 E0", cancellationToken);
         }
@@ -719,6 +716,11 @@ namespace Print3DCloud.Client.Printers.Marlin
         /// <returns>A <see cref="Task"/> that completes once all postamble commands have been sent.</returns>
         private async Task ExecuteUltiGCodePostambleAsync(int currentExtruder, CancellationToken cancellationToken)
         {
+            if (this.UltiGCodeSettings.Length == 0)
+            {
+                return;
+            }
+
             UltiGCodeSettings? settings = this.UltiGCodeSettings[currentExtruder];
 
             if (settings == null)
@@ -731,7 +733,9 @@ namespace Print3DCloud.Client.Printers.Marlin
             await this.SendCommandAsync("M104 S0", cancellationToken); // turn off extruder header
             await this.SendCommandAsync("M140 S0", cancellationToken); // turn off build plate header
             await this.SendCommandAsync("G91", cancellationToken); // relative positioning
-            await this.SendCommandAsync(FormattableString.Invariant($"G1 Z+0.5 E-{settings.EndOfPrintRetractionLength * volumeToFilamentLength} X-20 Y-20 F{settings.RetractionSpeed * 60}"), cancellationToken); // move head up and out of the way
+            await this.SendCommandAsync(FormattableString.Invariant($"G1 E-{settings.EndOfPrintRetractionLength * volumeToFilamentLength} F{settings.RetractionSpeed * 60}"), cancellationToken);
+            await this.SendCommandAsync("G0 Z0.5 F", cancellationToken);
+            await this.SendCommandAsync("G0 X-20 Y-20 F12000", cancellationToken);
             await this.SendCommandAsync("G28 X0 Y0", cancellationToken); // home head only
             await this.SendCommandAsync("G28 Z0", cancellationToken); // home build plate
             await this.SendCommandAsync("M84", cancellationToken); // disable steppers
