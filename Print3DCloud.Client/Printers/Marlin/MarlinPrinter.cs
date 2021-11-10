@@ -735,7 +735,7 @@ namespace Print3DCloud.Client.Printers.Marlin
             await this.SendCommandAsync("G91", cancellationToken); // relative positioning
             await this.SendCommandAsync(FormattableString.Invariant($"G1 E-{settings.EndOfPrintRetractionLength * volumeToFilamentLength} F{settings.RetractionSpeed * 60}"), cancellationToken);
             await this.SendCommandAsync("G0 Z0.5 F", cancellationToken);
-            await this.SendCommandAsync("G0 X-20 Y-20 F12000", cancellationToken);
+            await this.SendCommandAsync("G0 X-20 Y20 F12000", cancellationToken);
             await this.SendCommandAsync("G28 X0 Y0", cancellationToken); // home head only
             await this.SendCommandAsync("G28 Z0", cancellationToken); // home build plate
             await this.SendCommandAsync("M84", cancellationToken); // disable steppers
