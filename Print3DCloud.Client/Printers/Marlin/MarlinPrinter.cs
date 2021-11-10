@@ -307,7 +307,7 @@ namespace Print3DCloud.Client.Printers.Marlin
         /// <inheritdoc/>
         public async Task AbortPrintAsync(CancellationToken cancellationToken)
         {
-            if (this.State != PrinterState.Printing && this.State != PrinterState.Pausing && this.State != PrinterState.Paused)
+            if (this.State != PrinterState.Printing && this.State != PrinterState.Heating && this.State != PrinterState.Pausing && this.State != PrinterState.Paused)
             {
                 throw new InvalidOperationException("Not printing");
             }

@@ -207,7 +207,7 @@ namespace Print3DCloud.Client.Printers
 
             ack();
 
-            if (this.Printer.State != PrinterState.Printing)
+            if (this.Printer.State != PrinterState.Printing && this.Printer.State != PrinterState.Heating)
             {
                 return;
             }
