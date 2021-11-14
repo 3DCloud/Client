@@ -49,6 +49,8 @@ namespace Print3DCloud.Client.Printers.Marlin
         private SerialCommandManager? serialCommandManager;
         private CancellationTokenSource? backgroundTaskCancellationTokenSource;
         private CancellationTokenSource? printCancellationTokenSource;
+        private int currentExtruder;
+        private bool isUltiGCodePrint;
 
         private Task? temperaturePollingTask;
         private Task? receiveLoopTask;
@@ -199,13 +201,14 @@ namespace Print3DCloud.Client.Printers.Marlin
         }
 
         /// <inheritdoc/>
-        public async override Task DisconnectAsync(CancellationToken cancellationToken)
+        public override async Task DisconnectAsync(CancellationToken cancellationToken)
         {
             if (this.IsInState(PrinterState.Disconnecting) || this.IsInState(PrinterState.Disconnected))
             {
                 return;
             }
 
+            this.Progress = null;
             this.State = PrinterState.Disconnecting;
 
             this.logger.LogDebug("Waiting for all tasks to complete...");
@@ -287,6 +290,13 @@ namespace Print3DCloud.Client.Printers.Marlin
                 await this.printTask;
             }
 
+            this.Progress = null;
+
+            if (this.isUltiGCodePrint)
+            {
+                await this.ExecuteUltiGCodePostambleAsync(cancellationToken);
+            }
+
             if (this.GCodeSettings.CancelGCode != null)
             {
                 await this.SendCommandBlockAsync(this.GCodeSettings.CancelGCode, cancellationToken);
@@ -300,6 +310,7 @@ namespace Print3DCloud.Client.Printers.Marlin
         {
             if (disposing)
             {
+                this.Progress = null;
                 this.State = PrinterState.Disconnected;
 
                 this.serialCommandManager?.Dispose();
@@ -503,10 +514,11 @@ namespace Print3DCloud.Client.Printers.Marlin
 
                 GcodeProgressCalculator progressCalculator = new(gCodeFile.TotalTime, gCodeFile.ProgressSteps);
 
-                int currentExtruder = 0;
                 int maxFanSpeedPercent = 100;
 
-                if (gCodeFile.Flavor == UltiGCodeFlavor)
+                this.isUltiGCodePrint = gCodeFile.Flavor == UltiGCodeFlavor;
+
+                if (this.isUltiGCodePrint)
                 {
                     this.logger.LogInformation("UltiGCode detected!");
                     await this.ExecuteUltiGCodePreambleAsync(gCodeFile, cancellationToken);
@@ -537,7 +549,7 @@ namespace Print3DCloud.Client.Printers.Marlin
 
                     if (command.StartsWith('T'))
                     {
-                        currentExtruder = int.Parse(command[1..], CultureInfo.InvariantCulture);
+                        this.currentExtruder = int.Parse(command[1..], CultureInfo.InvariantCulture);
                     }
 
                     if (maxFanSpeedPercent != 100 && command.StartsWith("M106") && command.Contains('S'))
@@ -569,9 +581,9 @@ namespace Print3DCloud.Client.Printers.Marlin
                     this.Progress = estimate.Progress;
                 }
 
-                if (gCodeFile.Flavor == UltiGCodeFlavor)
+                if (this.isUltiGCodePrint)
                 {
-                    await this.ExecuteUltiGCodePostambleAsync(currentExtruder, cancellationToken);
+                    await this.ExecuteUltiGCodePostambleAsync(cancellationToken);
                 }
             }
 
@@ -580,6 +592,7 @@ namespace Print3DCloud.Client.Printers.Marlin
                 await this.SendCommandBlockAsync(this.GCodeSettings.EndGCode, cancellationToken);
             }
 
+            this.Progress = null;
             this.State = PrinterState.Ready;
         }
 
@@ -667,17 +680,17 @@ namespace Print3DCloud.Client.Printers.Marlin
         /// <summary>
         /// Executes end of print G-code when using UltiGCode.
         /// </summary>
-        /// <param name="currentExtruder">The current extruder.</param>
         /// <param name="cancellationToken">A <see cref="CancellationToken"/> used to propagate notification that the operation should be canceled.</param>
         /// <returns>A <see cref="Task"/> that completes once all postamble commands have been sent.</returns>
-        private async Task ExecuteUltiGCodePostambleAsync(int currentExtruder, CancellationToken cancellationToken)
+        private async Task ExecuteUltiGCodePostambleAsync(CancellationToken cancellationToken)
         {
-            if (this.UltiGCodeSettings.Length == 0)
+            if (this.UltiGCodeSettings.Length == 0 ||
+                this.currentExtruder >= this.UltiGCodeSettings.Length)
             {
                 return;
             }
 
-            UltiGCodeSettings? settings = this.UltiGCodeSettings[currentExtruder];
+            UltiGCodeSettings? settings = this.UltiGCodeSettings[this.currentExtruder];
 
             if (settings == null)
             {
@@ -689,11 +702,8 @@ namespace Print3DCloud.Client.Printers.Marlin
             await this.SendCommandAsync("M104 S0", cancellationToken); // turn off extruder header
             await this.SendCommandAsync("M140 S0", cancellationToken); // turn off build plate header
             await this.SendCommandAsync("G91", cancellationToken); // relative positioning
-            await this.SendCommandAsync(FormattableString.Invariant($"G1 E-{settings.EndOfPrintRetractionLength * volumeToFilamentLength} F{settings.RetractionSpeed * 60}"), cancellationToken);
-            await this.SendCommandAsync("G0 Z0.5 F", cancellationToken);
-            await this.SendCommandAsync("G0 X-20 Y20 F12000", cancellationToken);
-            await this.SendCommandAsync("G28 X0 Y0", cancellationToken); // home head only
-            await this.SendCommandAsync("G28 Z0", cancellationToken); // home build plate
+            await this.SendCommandAsync(FormattableString.Invariant($"G1 E-{settings.EndOfPrintRetractionLength / volumeToFilamentLength} F{settings.RetractionSpeed * 60}"), cancellationToken);
+            await this.SendCommandAsync("G28", cancellationToken); // home all axes
             await this.SendCommandAsync("M84", cancellationToken); // disable steppers
             await this.SendCommandAsync("G90", cancellationToken); // absolute positioning
         }
