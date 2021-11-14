@@ -16,12 +16,17 @@
         Connecting,
 
         /// <summary>
-        /// The printer is connected and ready to accept commands.
+        /// The printer is connected.
+        /// </summary>
+        Connected,
+
+        /// <summary>
+        /// The printer is connected and ready to accept commands. Sub-state of <see cref="Connected"/>.
         /// </summary>
         Ready,
 
         /// <summary>
-        /// A file to print is being downloaded.
+        /// A file to print is being downloaded. Sub-state of <see cref="Printing"/>.
         /// </summary>
         Downloading,
 
@@ -31,43 +36,23 @@
         Disconnecting,
 
         /// <summary>
-        /// The printer is busy. Sub-state of <see cref="Ready"/>.
+        /// The printer is busy. Sub-state of <see cref="Connected"/>.
         /// </summary>
         Busy,
 
         /// <summary>
-        /// The printer is heating. Sub-state of <see cref="Ready"/>.
+        /// The printer is heating. Sub-state of <see cref="Printing"/>.
         /// </summary>
         Heating,
 
         /// <summary>
-        /// The printer is printing from a file.
+        /// The printer is printing from a file. Sub-state of <see cref="Busy"/>.
         /// </summary>
         Printing,
-
-        /// <summary>
-        /// The printer has received a pause request and is attempting to pause the ongoing print. Sub-state of <see cref="Printing"/>.
-        /// </summary>
-        Pausing,
-
-        /// <summary>
-        /// The printer has paused the current print. Sub-state of <see cref="Printing"/>.
-        /// </summary>
-        Paused,
-
-        /// <summary>
-        /// The printer has received a resume request and is attempting to resume the ongoing print. Sub-state of <see cref="Printing"/>.
-        /// </summary>
-        Resuming,
 
         /// <summary>
         /// The printer has received an abort request and is attempting to abort the ongoing print. Sub-state of <see cref="Printing"/>.
         /// </summary>
         Canceling,
-
-        /// <summary>
-        /// An error has occurred and the printer cannot accept commands until it is reconnected.
-        /// </summary>
-        Errored,
     }
 }

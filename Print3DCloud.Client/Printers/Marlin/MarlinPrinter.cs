@@ -16,7 +16,7 @@ namespace Print3DCloud.Client.Printers.Marlin
     /// <summary>
     /// Printer driver for printers using Marlin (or derived) firmware that send G-code via serial.
     /// </summary>
-    internal class MarlinPrinter : IPrinter, IGCodePrinter, IUltiGCodePrinter
+    internal class MarlinPrinter : Printer, IGCodePrinter, IUltiGCodePrinter
     {
         /// <summary>
         /// Serial printer driver ID as defined by the back-end.
@@ -69,18 +69,6 @@ namespace Print3DCloud.Client.Printers.Marlin
             this.baudRate = baudRate;
         }
 
-        /// <inheritdoc/>
-        public PrinterState State { get; private set; }
-
-        /// <inheritdoc/>
-        public PrinterTemperatures? Temperatures { get; private set; }
-
-        /// <inheritdoc/>
-        public int? TimeRemaining { get; private set; }
-
-        /// <inheritdoc/>
-        public double? Progress { get; private set; }
-
         /// <summary>
         /// Gets the printer's settings.
         /// </summary>
@@ -93,9 +81,9 @@ namespace Print3DCloud.Client.Printers.Marlin
         public UltiGCodeSettings?[] UltiGCodeSettings { get; set; } = Array.Empty<UltiGCodeSettings>();
 
         /// <inheritdoc/>
-        public async Task ConnectAsync(CancellationToken cancellationToken)
+        public override async Task ConnectAsync(CancellationToken cancellationToken)
         {
-            if (this.State is not PrinterState.Disconnecting and not PrinterState.Disconnected)
+            if (this.IsInState(PrinterState.Ready))
             {
                 throw new InvalidOperationException("Printer is already connected");
             }
@@ -181,7 +169,7 @@ namespace Print3DCloud.Client.Printers.Marlin
         }
 
         /// <inheritdoc/>
-        public Task SendCommandAsync(string command, CancellationToken cancellationToken)
+        public override Task SendCommandAsync(string command, CancellationToken cancellationToken)
         {
             if (this.serialCommandManager == null)
             {
@@ -211,9 +199,9 @@ namespace Print3DCloud.Client.Printers.Marlin
         }
 
         /// <inheritdoc/>
-        public async Task DisconnectAsync(CancellationToken cancellationToken)
+        public async override Task DisconnectAsync(CancellationToken cancellationToken)
         {
-            if (this.State is PrinterState.Disconnecting or PrinterState.Disconnected)
+            if (this.IsInState(PrinterState.Disconnecting) || this.IsInState(PrinterState.Disconnected))
             {
                 return;
             }
@@ -263,7 +251,7 @@ namespace Print3DCloud.Client.Printers.Marlin
         }
 
         /// <inheritdoc/>
-        public Task ExecutePrintAsync(Stream stream, CancellationToken cancellationToken)
+        public override Task ExecutePrintAsync(Stream stream, CancellationToken cancellationToken)
         {
             if (this.State != PrinterState.Ready)
             {
@@ -283,31 +271,9 @@ namespace Print3DCloud.Client.Printers.Marlin
         }
 
         /// <inheritdoc/>
-        public Task PausePrintAsync(CancellationToken cancellationToken)
+        public override async Task AbortPrintAsync(CancellationToken cancellationToken)
         {
-            if (this.State != PrinterState.Printing)
-            {
-                throw new InvalidOperationException("Not printing");
-            }
-
-            throw new NotImplementedException();
-        }
-
-        /// <inheritdoc/>
-        public Task ResumePrintAsync(CancellationToken cancellationToken)
-        {
-            if (this.State != PrinterState.Paused)
-            {
-                throw new InvalidOperationException("Print isn't paused");
-            }
-
-            throw new NotImplementedException();
-        }
-
-        /// <inheritdoc/>
-        public async Task AbortPrintAsync(CancellationToken cancellationToken)
-        {
-            if (this.State != PrinterState.Printing && this.State != PrinterState.Heating && this.State != PrinterState.Pausing && this.State != PrinterState.Paused)
+            if (!this.IsInState(PrinterState.Printing))
             {
                 throw new InvalidOperationException("Not printing");
             }
@@ -330,17 +296,7 @@ namespace Print3DCloud.Client.Printers.Marlin
         }
 
         /// <inheritdoc/>
-        public void Dispose()
-        {
-            this.Dispose(true);
-            GC.SuppressFinalize(this);
-        }
-
-        /// <summary>
-        /// Releases the unmanaged resources used by the <see cref="MarlinPrinter"/> and optionally releases the managed resources.
-        /// </summary>
-        /// <param name="disposing">true to release both managed and unmanaged resources; false to release only unmanaged resources.</param>
-        protected void Dispose(bool disposing)
+        protected override void Dispose(bool disposing)
         {
             if (disposing)
             {
@@ -540,7 +496,7 @@ namespace Print3DCloud.Client.Printers.Marlin
                 await this.SendCommandBlockAsync(this.GCodeSettings.StartGCode, cancellationToken);
             }
 
-            // StreamReader takes care of closing the stream properly
+            // GCodeFile takes care of closing the stream properly
             using (GCodeFile gCodeFile = new(stream))
             {
                 await gCodeFile.PreprocessAsync(cancellationToken);

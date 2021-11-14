@@ -42,7 +42,7 @@ namespace Print3DCloud.Client
         /// Initializes a new instance of the <see cref="DeviceManager"/> class.
         /// </summary>
         /// <param name="logger">The logger to use.</param>
-        /// <param name="serviceProvider">Service provider to use when creating <see cref="IPrinter"/> instances.</param>
+        /// <param name="serviceProvider">Service provider to use when creating <see cref="Printer"/> instances.</param>
         /// <param name="actionCableClient">The <see cref="ActionCableClient"/> to use to communicate with the server.</param>
         /// <param name="config">The application's configuration.</param>
         public DeviceManager(ILogger<DeviceManager> logger, IServiceProvider serviceProvider, ActionCableClient actionCableClient, Config config)
@@ -126,7 +126,7 @@ namespace Print3DCloud.Client
 
             this.logger.LogInformation("Attempting to set up printer '{HardwareIdentifier}'", hardwareIdentifier);
 
-            IPrinter printer;
+            Printer printer;
 
             if (this.discoveredSerialDevices.TryGetValue(hardwareIdentifier, out SerialPortInfo portInfo))
             {

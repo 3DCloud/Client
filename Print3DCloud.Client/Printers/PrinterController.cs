@@ -25,9 +25,9 @@ namespace Print3DCloud.Client.Printers
         /// Initializes a new instance of the <see cref="PrinterController"/> class.
         /// </summary>
         /// <param name="logger">The <see cref="ILogger"/> to use.</param>
-        /// <param name="printer">The <see cref="IPrinter"/> being controlled.</param>
+        /// <param name="printer">The <see cref="Printers.Printer"/> being controlled.</param>
         /// <param name="subscription">The <see cref="ActionCableSubscription"/> to use.</param>
-        public PrinterController(ILogger<PrinterController> logger, IPrinter printer, IActionCableSubscription subscription)
+        public PrinterController(ILogger<PrinterController> logger, Printer printer, IActionCableSubscription subscription)
         {
             this.logger = logger;
             this.Printer = printer;
@@ -42,7 +42,7 @@ namespace Print3DCloud.Client.Printers
         /// <summary>
         /// Gets the printer controlled by this <see cref="PrinterController"/>
         /// </summary>
-        public IPrinter Printer { get; }
+        public Printer Printer { get; }
 
         /// <summary>
         /// Gets the <see cref="PrinterState"/> that represents the current state of this printer.
@@ -207,7 +207,7 @@ namespace Print3DCloud.Client.Printers
 
             ack();
 
-            if (this.Printer.State != PrinterState.Printing && this.Printer.State != PrinterState.Heating)
+            if (!this.Printer.IsInState(PrinterState.Printing))
             {
                 return;
             }

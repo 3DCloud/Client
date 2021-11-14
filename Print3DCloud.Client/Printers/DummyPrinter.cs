@@ -8,9 +8,9 @@ using Microsoft.Extensions.Logging;
 namespace Print3DCloud.Client.Printers
 {
     /// <summary>
-    /// An implementation of <see cref="IPrinter"/> that gives dummy data.
+    /// An implementation of <see cref="Printer"/> that gives dummy data.
     /// </summary>
-    internal class DummyPrinter : IPrinter
+    internal class DummyPrinter : Printer
     {
         private readonly ILogger<DummyPrinter> logger;
         private readonly Random random;
@@ -29,10 +29,7 @@ namespace Print3DCloud.Client.Printers
         }
 
         /// <inheritdoc/>
-        public PrinterState State { get; private set; }
-
-        /// <inheritdoc/>
-        public PrinterTemperatures Temperatures => new(
+        public override PrinterTemperatures Temperatures => new(
             new List<TemperatureSensor>
             {
                 new("T0", 210 + this.random.NextDouble() - 0.5, 210),
@@ -40,19 +37,15 @@ namespace Print3DCloud.Client.Printers
             },
             new TemperatureSensor("B", 60 + this.random.NextDouble() - 0.5, 60));
 
-        public int? TimeRemaining { get; }
-
-        public double? Progress { get; }
-
         /// <inheritdoc/>
-        public Task ConnectAsync(CancellationToken cancellationToken)
+        public override Task ConnectAsync(CancellationToken cancellationToken)
         {
             this.logger.LogInformation("Connected");
             return Task.CompletedTask;
         }
 
         /// <inheritdoc/>
-        public async Task DisconnectAsync(CancellationToken cancellationToken)
+        public override async Task DisconnectAsync(CancellationToken cancellationToken)
         {
             this.printCancellationTokenSource?.Cancel();
             this.printCancellationTokenSource = null;
@@ -67,7 +60,7 @@ namespace Print3DCloud.Client.Printers
         }
 
         /// <inheritdoc/>
-        public Task ExecutePrintAsync(Stream fileStream, CancellationToken cancellationToken)
+        public override Task ExecutePrintAsync(Stream fileStream, CancellationToken cancellationToken)
         {
             this.State = PrinterState.Printing;
 
@@ -77,29 +70,7 @@ namespace Print3DCloud.Client.Printers
         }
 
         /// <inheritdoc/>
-        public Task PausePrintAsync(CancellationToken cancellationToken)
-        {
-            this.State = PrinterState.Pausing;
-
-            this.printCancellationTokenSource?.Cancel();
-
-            this.State = PrinterState.Paused;
-
-            return Task.CompletedTask;
-        }
-
-        /// <inheritdoc/>
-        public Task ResumePrintAsync(CancellationToken cancellationToken)
-        {
-            this.State = PrinterState.Resuming;
-
-            this.State = PrinterState.Printing;
-
-            return Task.CompletedTask;
-        }
-
-        /// <inheritdoc/>
-        public async Task AbortPrintAsync(CancellationToken cancellationToken)
+        public override async Task AbortPrintAsync(CancellationToken cancellationToken)
         {
             this.State = PrinterState.Canceling;
 
@@ -109,23 +80,13 @@ namespace Print3DCloud.Client.Printers
         }
 
         /// <inheritdoc/>
-        public Task SendCommandAsync(string command, CancellationToken cancellationToken)
+        public override Task SendCommandAsync(string command, CancellationToken cancellationToken)
         {
             return Task.Delay(50, cancellationToken);
         }
 
         /// <inheritdoc/>
-        public void Dispose()
-        {
-            this.Dispose(true);
-            GC.SuppressFinalize(this);
-        }
-
-        /// <summary>
-        /// Releases the unmanaged resources used by the <see cref="DummyPrinter"/> and optionally releases the managed resources.
-        /// </summary>
-        /// <param name="disposing">true to release both managed and unmanaged resources; false to release only unmanaged resources.</param>
-        protected void Dispose(bool disposing)
+        protected override void Dispose(bool disposing)
         {
             this.State = PrinterState.Disconnected;
         }
