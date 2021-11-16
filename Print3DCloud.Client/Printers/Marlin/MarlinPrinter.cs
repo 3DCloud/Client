@@ -701,6 +701,7 @@ namespace Print3DCloud.Client.Printers.Marlin
 
             await this.SendCommandAsync("M104 S0", cancellationToken); // turn off extruder header
             await this.SendCommandAsync("M140 S0", cancellationToken); // turn off build plate header
+            await this.SendCommandAsync("M107", cancellationToken); // turn off fans
             await this.SendCommandAsync("G91", cancellationToken); // relative positioning
             await this.SendCommandAsync(FormattableString.Invariant($"G1 E-{settings.EndOfPrintRetractionLength / volumeToFilamentLength} F{settings.RetractionSpeed * 60}"), cancellationToken);
             await this.SendCommandAsync("G28", cancellationToken); // home all axes
