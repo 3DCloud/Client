@@ -1,5 +1,6 @@
 ﻿using System;
 using System.Collections.Generic;
+using System.Diagnostics;
 using System.IO;
 using System.Linq;
 using System.Management;
@@ -42,7 +43,7 @@ namespace Print3DCloud.Client
         {
             // Win32_SerialPort doesn't find USB serial ports so we have to use Win32_PnPEntity with the "Ports (COM & LPT ports)" GUID
             // (see https://docs.microsoft.com/en-us/windows-hardware/drivers/install/system-defined-device-setup-classes-available-to-vendors)
-            using var searcher = new ManagementObjectSearcher("SELECT * FROM Win32_PnPEntity WHERE ClassGuid='{4d36e978-e325-11ce-bfc1-08002be10318}'");
+            using ManagementObjectSearcher searcher = new("SELECT * FROM Win32_PnPEntity WHERE ClassGuid='{4d36e978-e325-11ce-bfc1-08002be10318}'");
             ManagementObjectCollection serialPorts = searcher.Get();
 
             var portInfos = new List<SerialPortInfo>(serialPorts.Count);
@@ -64,14 +65,12 @@ namespace Print3DCloud.Client
                 string identifier = deviceIdMatch.Groups["identifier"].Value;
                 bool isSerialNumber = identifier.All(char.IsLetterOrDigit);
 
-                portInfos.Add(new SerialPortInfo
-                {
-                    PortName = portName,
-                    VendorId = deviceIdMatch.Groups["vid"].Value,
-                    ProductId = deviceIdMatch.Groups["pid"].Value,
-                    UniqueId = identifier,
-                    IsPortableUniqueId = isSerialNumber,
-                });
+                portInfos.Add(new SerialPortInfo(
+                    portName,
+                    deviceIdMatch.Groups["vid"].Value,
+                    deviceIdMatch.Groups["pid"].Value,
+                    identifier,
+                    null));
             }
 
             return portInfos;
@@ -120,29 +119,19 @@ namespace Print3DCloud.Client
 
                 usbInterfacePath = Path.GetDirectoryName(usbInterfacePath)!;
                 string serialPath = Path.Join(usbInterfacePath, "serial");
-                string hardwareIdentifier;
-                bool isUniqueHardwareIdentifier;
+                string? serialNumber = null;
 
                 if (File.Exists(serialPath))
                 {
-                    hardwareIdentifier = File.ReadAllText(serialPath).Trim();
-                    isUniqueHardwareIdentifier = true;
-                }
-                else
-                {
-                    // trim /sys/devices/
-                    hardwareIdentifier = usbInterfacePath[13..];
-                    isUniqueHardwareIdentifier = false;
+                    serialNumber = File.ReadAllText(serialPath).Trim();
                 }
 
-                portInfos.Add(new SerialPortInfo
-                {
-                    PortName = path,
-                    UniqueId = hardwareIdentifier,
-                    IsPortableUniqueId = isUniqueHardwareIdentifier,
-                    ProductId = File.ReadAllText(Path.Join(usbInterfacePath, "idProduct")),
-                    VendorId = File.ReadAllText(Path.Join(usbInterfacePath, "idVendor")),
-                });
+                portInfos.Add(new SerialPortInfo(
+                    path,
+                    File.ReadAllText(Path.Join(usbInterfacePath, "idVendor")),
+                    File.ReadAllText(Path.Join(usbInterfacePath, "idProduct")),
+                    usbInterfacePath[13..],
+                    serialNumber));
             }
 
             return portInfos;

@@ -10,30 +10,30 @@ namespace Print3DCloud.Client.ActionCable
         /// <summary>
         /// Initializes a new instance of the <see cref="DeviceMessage"/> class.
         /// </summary>
-        /// <param name="deviceName">The name of the device.</param>
-        /// <param name="hardwareIdentifier">The unique identifier for this device.</param>
-        /// <param name="isPortableHardwareIdentifier">Whether or not the <paramref name="hardwareIdentifier"/> will be the same across multiple clients.</param>
-        public DeviceMessage(string deviceName, string hardwareIdentifier, bool isPortableHardwareIdentifier)
+        /// <param name="name">The name of the device.</param>
+        /// <param name="path">The path of the device in the system device tree.</param>
+        /// <param name="serialNumber">The serial number of the device, if any.</param>
+        public DeviceMessage(string name, string path, string? serialNumber)
             : base("device")
         {
-            this.DeviceName = deviceName;
-            this.HardwareIdentifier = hardwareIdentifier;
-            this.IsPortableHardwareIdentifier = isPortableHardwareIdentifier;
+            this.Name = name;
+            this.Path = path;
+            this.SerialNumber = serialNumber;
         }
 
         /// <summary>
         /// Gets the name of the device.
         /// </summary>
-        public string DeviceName { get; }
+        public string Name { get; }
 
         /// <summary>
-        /// Gets the unique identifier for this device.
+        /// Gets the path of the device in the system device tree.
         /// </summary>
-        public string HardwareIdentifier { get; }
+        public string Path { get; }
 
         /// <summary>
-        /// Gets a value indicating whether or not the <see cref="HardwareIdentifier"/> will be the same across multiple clients.
+        /// Gets the serial number of the device, if any.
         /// </summary>
-        public bool IsPortableHardwareIdentifier { get; }
+        public string? SerialNumber { get; }
     }
 }

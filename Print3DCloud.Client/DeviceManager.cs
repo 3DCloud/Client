@@ -21,16 +21,14 @@ namespace Print3DCloud.Client
     internal class DeviceManager : IHostedService
     {
         private const string PrinterConfigurationActionName = "printer_configuration";
+        private const string DummyPrinterDeviceName = "dummy";
+        private const string DummyPrinterDevicePath = "dummy";
         private const int ScanDevicesIntervalMs = 1_000;
         private const int RetryConnectionDelayMs = 10_000;
 
         private readonly ILogger<DeviceManager> logger;
         private readonly IServiceProvider serviceProvider;
         private readonly ActionCableClient actionCableClient;
-
-#if DEBUG
-        private readonly string dummyPrinterId;
-#endif
 
         private readonly IActionCableSubscription subscription;
         private readonly Dictionary<string, SerialPortInfo> discoveredSerialDevices = new();
@@ -53,11 +51,7 @@ namespace Print3DCloud.Client
 
             this.actionCableClient.Disconnected += this.ActionCableClient_Disconnected;
 
-#if DEBUG
-            this.dummyPrinterId = $"{config.ClientId}_dummy";
-#endif
-
-            this.subscription = this.actionCableClient.GetSubscription(new ClientIdentifier(config.ClientId, config.Secret));
+            this.subscription = this.actionCableClient.GetSubscription(new Identifier("ClientChannel"));
 
             this.subscription.Subscribed += this.Subscription_Subscribed;
             this.subscription.Unsubscribed += this.Subscription_Unsubscribed;
@@ -105,11 +99,11 @@ namespace Print3DCloud.Client
 
             if (message.Printer.PrinterDefinition == null || message.Printer.Device == null) return;
 
-            string hardwareIdentifier = message.Printer.Device.HardwareIdentifier;
+            string devicePath = message.Printer.Device.Path;
 
-            if (this.printers.TryGetValue(hardwareIdentifier, out PrinterController? printerController))
+            if (this.printers.TryGetValue(devicePath, out PrinterController? printerController))
             {
-                this.logger.LogInformation("Printer '{HardwareIdentifier}' is already connected, applying configuration", hardwareIdentifier);
+                this.logger.LogInformation("Printer '{DevicePath}' is already connected, applying configuration", devicePath);
 
                 if (printerController.Printer is IGCodePrinter gCodePrinter)
                 {
@@ -124,11 +118,11 @@ namespace Print3DCloud.Client
                 return;
             }
 
-            this.logger.LogInformation("Attempting to set up printer '{HardwareIdentifier}'", hardwareIdentifier);
+            this.logger.LogInformation("Attempting to set up printer '{DevicePath}'", devicePath);
 
             Printer printer;
 
-            if (this.discoveredSerialDevices.TryGetValue(hardwareIdentifier, out SerialPortInfo portInfo))
+            if (this.discoveredSerialDevices.TryGetValue(devicePath, out SerialPortInfo? portInfo))
             {
                 string driver = message.Printer.PrinterDefinition.Driver;
 
@@ -147,14 +141,14 @@ namespace Print3DCloud.Client
                 }
             }
 #if DEBUG
-            else if (hardwareIdentifier == this.dummyPrinterId)
+            else if (devicePath == DummyPrinterDevicePath)
             {
                 printer = ActivatorUtilities.CreateInstance<DummyPrinter>(this.serviceProvider);
             }
 #endif
             else
             {
-                this.logger.LogError("Unknown printer '{HardwareIdentifier}'", hardwareIdentifier);
+                this.logger.LogError("Unknown printer '{DevicePath}'", devicePath);
                 return;
             }
 
@@ -168,19 +162,19 @@ namespace Print3DCloud.Client
                 ultiGCodePrinter2.UltiGCodeSettings = message.Printer.UltiGCodeSettings;
             }
 
-            IActionCableSubscription subscription = this.actionCableClient.GetSubscription(new PrinterIdentifier(hardwareIdentifier));
+            IActionCableSubscription subscription = this.actionCableClient.GetSubscription(new PrinterIdentifier(devicePath));
             printerController = ActivatorUtilities.CreateInstance<PrinterController>(this.serviceProvider, printer, subscription);
-            this.printers.Add(hardwareIdentifier, printerController);
+            this.printers.Add(devicePath, printerController);
 
             try
             {
                 await Task.Run(() => printerController.SubscribeAndConnect(this.cancellationTokenSource.Token));
 
-                this.logger.LogInformation("Printer '{HardwareIdentifier}' set up successfully", hardwareIdentifier);
+                this.logger.LogInformation("Printer '{DevicePath}' set up successfully", devicePath);
             }
             catch (Exception ex)
             {
-                this.logger.LogError("Failed to set up printer '{HardwareIdentifier}'\n{Exception}", hardwareIdentifier, ex);
+                this.logger.LogError("Failed to set up printer '{DevicePath}'\n{Exception}", devicePath, ex);
             }
         }
 
@@ -191,7 +185,7 @@ namespace Print3DCloud.Client
             #if DEBUG
             if (Environment.GetCommandLineArgs().Contains("--dummy-printer"))
             {
-                await this.subscription.PerformAsync(new DeviceMessage("dummy0", this.dummyPrinterId, false), CancellationToken.None).ConfigureAwait(false);
+                await this.subscription.PerformAsync(new DeviceMessage(DummyPrinterDeviceName, DummyPrinterDevicePath, null), CancellationToken.None).ConfigureAwait(false);
             }
             #endif
 
@@ -215,14 +209,14 @@ namespace Print3DCloud.Client
             {
                 portInfos.Add(portInfo);
 
-                if (this.discoveredSerialDevices.ContainsKey(portInfo.UniqueId)) continue;
+                if (this.discoveredSerialDevices.ContainsKey(portInfo.DevicePath)) continue;
 
                 this.logger.LogInformation("Found new device at {PortName}", portInfo.PortName);
 
                 try
                 {
-                    await this.subscription.PerformAsync(new DeviceMessage(portInfo.PortName, portInfo.UniqueId, portInfo.IsPortableUniqueId), cancellationToken).ConfigureAwait(false);
-                    this.discoveredSerialDevices.Add(portInfo.UniqueId, portInfo);
+                    await this.subscription.PerformAsync(new DeviceMessage(portInfo.PortName, portInfo.DevicePath, portInfo.SerialNumber), cancellationToken).ConfigureAwait(false);
+                    this.discoveredSerialDevices.Add(portInfo.DevicePath, portInfo);
                 }
                 catch (Exception ex)
                 {
@@ -260,9 +254,9 @@ namespace Print3DCloud.Client
                 devicesToRemove.Add(deviceId);
             }
 
-            foreach (string hardwareIdentifier in devicesToRemove)
+            foreach (string devicePath in devicesToRemove)
             {
-                this.discoveredSerialDevices.Remove(hardwareIdentifier);
+                this.discoveredSerialDevices.Remove(devicePath);
             }
         }
 

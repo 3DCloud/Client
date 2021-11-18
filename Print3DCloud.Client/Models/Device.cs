@@ -2,5 +2,5 @@
 
 namespace Print3DCloud.Client.Models
 {
-    internal record Device(int Id, string DeviceName, string HardwareIdentifier, bool IsPortableHardwareIdentifier, DateTime LastSeen, Guid ClientId, Client Client, DateTime CreatedAt, DateTime UpdatedAt);
+    internal record Device(int Id, string Name, string Path, string? SerialNumber, DateTime LastSeen, Guid ClientId, Client Client, DateTime CreatedAt, DateTime UpdatedAt);
 }

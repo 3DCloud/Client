@@ -10,16 +10,16 @@ namespace Print3DCloud.Client.ActionCable
         /// <summary>
         /// Initializes a new instance of the <see cref="PrinterIdentifier"/> class.
         /// </summary>
-        /// <param name="hardwareIdentifier">The hardware identifier for the printer to be represented by this identifier.</param>
-        public PrinterIdentifier(string hardwareIdentifier)
+        /// <param name="devicePath">The device path for the printer to be represented by this identifier.</param>
+        public PrinterIdentifier(string devicePath)
             : base("PrinterChannel")
         {
-            this.HardwareIdentifier = hardwareIdentifier;
+            this.DevicePath = devicePath;
         }
 
         /// <summary>
-        /// Gets the hardware identifier for the printer represented by this identifier.
+        /// Gets the device path for the printer represented by this identifier.
         /// </summary>
-        public string HardwareIdentifier { get; }
+        public string DevicePath { get; }
     }
 }
