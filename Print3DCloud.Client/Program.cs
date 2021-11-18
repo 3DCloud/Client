@@ -33,7 +33,7 @@ namespace Print3DCloud.Client
 
             ILogger<Program> logger = services.GetRequiredService<ILogger<Program>>();
 
-            if (string.IsNullOrWhiteSpace(config.ServerHost))
+            if (string.IsNullOrWhiteSpace(config.CablePath))
             {
                 logger.LogError("Server host is empty; shutting down");
                 return;
@@ -68,7 +68,7 @@ namespace Print3DCloud.Client
             services.AddSingleton((serviceProvider) =>
             {
                 Config resolvedConfig = serviceProvider.GetRequiredService<Config>();
-                ActionCableClient actionCableClient = new(serviceProvider.GetRequiredService<ILogger<ActionCableClient>>(), new Uri($"ws://{resolvedConfig.ServerHost}/cable"), "3DCloud-Client");
+                ActionCableClient actionCableClient = new(serviceProvider.GetRequiredService<ILogger<ActionCableClient>>(), new Uri(resolvedConfig.CablePath), "3DCloud-Client");
 
                 actionCableClient.AdditionalHeaders.Add(("X-Client-Id", resolvedConfig.ClientId.ToString()));
                 actionCableClient.AdditionalHeaders.Add(("X-Client-Secret", resolvedConfig.Secret));

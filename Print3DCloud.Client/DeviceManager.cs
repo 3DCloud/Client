@@ -211,7 +211,7 @@ namespace Print3DCloud.Client
 
                 if (this.discoveredSerialDevices.ContainsKey(portInfo.DevicePath)) continue;
 
-                this.logger.LogInformation("Found new device at {PortName}", portInfo.PortName);
+                this.logger.LogInformation("Found new device at {PortName} ({DevicePath})", portInfo.PortName, portInfo.DevicePath);
 
                 try
                 {

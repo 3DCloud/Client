@@ -6,9 +6,8 @@ using System.Linq;
 using System.Management;
 using System.Runtime.Versioning;
 using System.Text.RegularExpressions;
-using Print3DCloud.Client.Utilities;
 
-namespace Print3DCloud.Client
+namespace Print3DCloud.Client.Utilities
 {
     /// <summary>
     /// Helper methods related to serial ports.

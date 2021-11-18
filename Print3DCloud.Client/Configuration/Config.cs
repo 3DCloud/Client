@@ -36,7 +36,7 @@ namespace Print3DCloud.Client.Configuration
         /// Gets the server host (domain name + port).
         /// </summary>
         [JsonInclude]
-        public string ServerHost { get; private set; } = "localhost:3000";
+        public string CablePath { get; private set; } = "ws://localhost:3000/cable";
 
         /// <summary>
         /// Gets the client's GUID.
