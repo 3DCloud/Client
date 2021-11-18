@@ -8,6 +8,6 @@ namespace Print3DCloud.Client.Printers
         /// <summary>
         /// Gets or sets the printer's G-code settings.
         /// </summary>
-        public GCodeSettings GCodeSettings { get; set; }
+        public GCodeSettings? GCodeSettings { get; set; }
     }
 }

@@ -77,7 +77,7 @@ namespace Print3DCloud.Client.Printers.Marlin
         public MarlinSettings? Settings { get; private set; }
 
         /// <inheritdoc/>
-        public GCodeSettings GCodeSettings { get; set; } = new(CancelGCode: "G28\nM104 S0\nM140 S0\nM84");
+        public GCodeSettings? GCodeSettings { get; set; }
 
         /// <inheritdoc/>
         public UltiGCodeSettings?[] UltiGCodeSettings { get; set; } = Array.Empty<UltiGCodeSettings>();
@@ -297,7 +297,7 @@ namespace Print3DCloud.Client.Printers.Marlin
                 await this.ExecuteUltiGCodePostambleAsync(cancellationToken);
             }
 
-            if (this.GCodeSettings.CancelGCode != null)
+            if (this.GCodeSettings?.CancelGCode != null)
             {
                 await this.SendCommandBlockAsync(this.GCodeSettings.CancelGCode, cancellationToken);
             }
@@ -502,7 +502,7 @@ namespace Print3DCloud.Client.Printers.Marlin
 
         private async Task RunPrintAsync(Stream stream, CancellationToken cancellationToken)
         {
-            if (this.GCodeSettings.StartGCode != null)
+            if (this.GCodeSettings?.StartGCode != null)
             {
                 await this.SendCommandBlockAsync(this.GCodeSettings.StartGCode, cancellationToken);
             }
@@ -587,7 +587,7 @@ namespace Print3DCloud.Client.Printers.Marlin
                 }
             }
 
-            if (this.GCodeSettings.EndGCode != null)
+            if (this.GCodeSettings?.EndGCode != null)
             {
                 await this.SendCommandBlockAsync(this.GCodeSettings.EndGCode, cancellationToken);
             }
