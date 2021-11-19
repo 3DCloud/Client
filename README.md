@@ -1,5 +1,5 @@
 # 3DCloud Client
-[![GitHub Workflow Status](https://img.shields.io/github/workflow/status/3DCloud/Client/Build%20%26%20Test?style=flat-square)](https://github.com/3DCloud/Client/actions/workflows/build-and-test.yml)
+[![GitHub Workflow Status](https://img.shields.io/github/workflow/status/3DCloud/Client/.NET?style=flat-square)](https://github.com/3DCloud/Client/actions/workflows/dotnet.yml)
 [![Codecov](https://img.shields.io/codecov/c/github/3DCloud/Client?style=flat-square)](https://codecov.io/gh/3DCloud/Client)
 [![License](https://img.shields.io/github/license/3DCloud/Client?style=flat-square)](https://github.com/3DCloud/Client/blob/main/LICENSE)
 
