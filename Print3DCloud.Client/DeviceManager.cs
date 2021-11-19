@@ -8,7 +8,6 @@ using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Logging;
 using Print3DCloud.Client.ActionCable;
-using Print3DCloud.Client.Configuration;
 using Print3DCloud.Client.Printers;
 using Print3DCloud.Client.Printers.Marlin;
 using Print3DCloud.Client.Utilities;
@@ -25,6 +24,7 @@ namespace Print3DCloud.Client
         private const string DummyPrinterDevicePath = "dummy";
         private const int ScanDevicesIntervalMs = 1_000;
         private const int RetryConnectionDelayMs = 10_000;
+        private const int PrinterConnectTimeOutMs = 15_000;
 
         private readonly ILogger<DeviceManager> logger;
         private readonly IServiceProvider serviceProvider;
@@ -42,8 +42,7 @@ namespace Print3DCloud.Client
         /// <param name="logger">The logger to use.</param>
         /// <param name="serviceProvider">Service provider to use when creating <see cref="Printer"/> instances.</param>
         /// <param name="actionCableClient">The <see cref="ActionCableClient"/> to use to communicate with the server.</param>
-        /// <param name="config">The application's configuration.</param>
-        public DeviceManager(ILogger<DeviceManager> logger, IServiceProvider serviceProvider, ActionCableClient actionCableClient, Config config)
+        public DeviceManager(ILogger<DeviceManager> logger, IServiceProvider serviceProvider, ActionCableClient actionCableClient)
         {
             this.logger = logger;
             this.serviceProvider = serviceProvider;
@@ -168,7 +167,11 @@ namespace Print3DCloud.Client
 
             try
             {
-                await Task.Run(() => printerController.SubscribeAndConnect(this.cancellationTokenSource.Token));
+                CancellationToken cancellationToken = CancellationTokenSource.CreateLinkedTokenSource(
+                    this.cancellationTokenSource.Token,
+                    new CancellationTokenSource(PrinterConnectTimeOutMs).Token).Token;
+
+                await Task.Run(() => printerController.SubscribeAndConnect(cancellationToken), cancellationToken);
 
                 this.logger.LogInformation("Printer '{DevicePath}' set up successfully", devicePath);
             }
