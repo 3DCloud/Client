@@ -285,8 +285,10 @@ namespace Print3DCloud.Client
             }
         }
 
-        private async void ActionCableClient_Disconnected(bool willReconnect)
+        private async void ActionCableClient_Disconnected(bool willReconnect, string? reason)
         {
+            this.logger.LogInformation("Cable connection lost");
+
             // force re-send of devices once reconnected
             this.discoveredSerialDevices.Clear();
 
@@ -295,8 +297,15 @@ namespace Print3DCloud.Client
                 return;
             }
 
-            this.logger.LogInformation("Cable connection lost");
-            await this.actionCableClient.ConnectAsync(this.cancellationTokenSource.Token);
+            CancellationToken cancellationToken = this.cancellationTokenSource.Token;
+
+            if (reason != "server_restart")
+            {
+                this.logger.LogInformation("Waiting {Delay} ms before reconnecting", RetryConnectionDelayMs);
+                await Task.Delay((int)(RetryConnectionDelayMs * (0.8 + this.random.NextDouble() * 0.4)), cancellationToken);
+            }
+
+            await this.actionCableClient.ConnectAsync(cancellationToken);
         }
     }
 }

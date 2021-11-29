@@ -209,7 +209,7 @@ namespace ActionCableSharp
             await this.SubscribeAsync(CancellationToken.None);
         }
 
-        private async void Client_Disconnected(bool isReconnecting)
+        private async void Client_Disconnected(bool isReconnecting, string? reason)
         {
             await this.Unsubscribe(CancellationToken.None);
         }

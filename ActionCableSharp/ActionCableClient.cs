@@ -31,6 +31,7 @@ namespace ActionCableSharp
         private IWebSocket? webSocket;
         private CancellationTokenSource? loopCancellationTokenSource;
         private bool shouldReconnectAfterClose;
+        private string? disconnectReason;
 
         private Task? receiveLoopTask;
 
@@ -106,7 +107,8 @@ namespace ActionCableSharp
         /// Represents a method that will handle the <see cref="Disconnected"/> event.
         /// </summary>
         /// <param name="willReconnect">Indicates whether the client will attempt to reconnect or not.</param>
-        public delegate void DisconnectedHandler(bool willReconnect);
+        /// <param name="reason">The reason for which the server disconnected (if applicable).</param>
+        public delegate void DisconnectedHandler(bool willReconnect, string? reason);
 
         /// <summary>
         /// Represents a method that will handle the <see cref="MessageReceived"/> event.
@@ -306,17 +308,8 @@ namespace ActionCableSharp
 
                 case WebSocketMessageType.Close:
                     this.logger.LogInformation("Connection closed by remote host");
-                    this.State = ClientState.Disconnecting;
 
-                    try
-                    {
-                        await this.webSocket.CloseOutputAsync(WebSocketCloseStatus.NormalClosure, "Closed by request from server", cancellationToken).ConfigureAwait(false);
-                    }
-                    finally
-                    {
-                        this.State = ClientState.Disconnected;
-                        this.Disconnected?.Invoke(false);
-                    }
+                    await this.webSocket.CloseOutputAsync(WebSocketCloseStatus.NormalClosure, "Closed by request from server", cancellationToken).ConfigureAwait(false);
 
                     break;
 
@@ -338,7 +331,7 @@ namespace ActionCableSharp
             }
 
             this.State = ClientState.Disconnected;
-            this.Disconnected?.Invoke(false);
+            this.Disconnected?.Invoke(false, null);
 
             this.disposed = true;
         }
@@ -374,7 +367,7 @@ namespace ActionCableSharp
             }
 
             this.State = ClientState.Disconnected;
-            this.Disconnected?.Invoke(willReconnect);
+            this.Disconnected?.Invoke(willReconnect, this.disconnectReason);
         }
 
         private async Task ReconnectAsync(CancellationToken cancellationToken)
@@ -455,13 +448,13 @@ namespace ActionCableSharp
                     if (!string.IsNullOrWhiteSpace(message.Reason))
                     {
                         this.logger.LogInformation("Server requested disconnect; reason: {reason}", message.Reason);
+                        this.disconnectReason = message.Reason;
                     }
                     else
                     {
                         this.logger.LogInformation("Server requested disconnect");
                     }
 
-                    this.State = ClientState.Disconnecting;
                     this.shouldReconnectAfterClose = message.Reconnect == true;
 
                     break;
