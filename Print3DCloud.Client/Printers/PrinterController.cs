@@ -173,19 +173,10 @@ namespace Print3DCloud.Client.Printers
 
                 await using (FileStream fileStream = new(path, FileMode.Open, FileAccess.Read))
                 {
-                    try
-                    {
-                        await this.Printer.ExecutePrintAsync(fileStream, CancellationToken.None);
-                        await this.subscription.GuaranteePerformAsync(
-                            new PrintEventMessage(PrintEventType.Success),
-                            CancellationToken.None);
-                    }
-                    catch (OperationCanceledException)
-                    {
-                        await this.subscription.GuaranteePerformAsync(
-                            new PrintEventMessage(PrintEventType.Canceled),
-                            CancellationToken.None);
-                    }
+                    await this.Printer.ExecutePrintAsync(fileStream, CancellationToken.None);
+                    await this.subscription.GuaranteePerformAsync(
+                        new PrintEventMessage(PrintEventType.Success),
+                        CancellationToken.None);
                 }
             }
             catch (Exception ex)
