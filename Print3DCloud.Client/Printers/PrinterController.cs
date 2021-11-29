@@ -179,6 +179,9 @@ namespace Print3DCloud.Client.Printers
                         CancellationToken.None);
                 }
             }
+            catch (OperationCanceledException)
+            {
+            }
             catch (Exception ex)
             {
                 this.logger.LogError("Print failed\n{Exception}", ex);
