@@ -209,14 +209,18 @@ namespace Print3DCloud.Client.Printers
             try
             {
                 await this.Printer.AbortPrintAsync(CancellationToken.None);
-                await this.subscription.GuaranteePerformAsync(
-                    new PrintEventMessage(PrintEventType.Canceled),
-                    CancellationToken.None);
+            }
+            catch (OperationCanceledException)
+            {
             }
             catch (Exception ex)
             {
                 this.logger.LogError("Failed to abort print\n{Exception}", ex);
             }
+
+            await this.subscription.GuaranteePerformAsync(
+                new PrintEventMessage(PrintEventType.Canceled),
+                CancellationToken.None);
         }
     }
 }
