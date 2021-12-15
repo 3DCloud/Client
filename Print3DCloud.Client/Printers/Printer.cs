@@ -258,13 +258,15 @@ namespace Print3DCloud.Client.Printers
 
             if (!this.IsInState(PrinterState.Printing))
             {
-                return;
+                ack(new Exception("Printer is not printing"));
             }
+
+            ack();
 
             try
             {
                 await this.AbortPrintAsync(CancellationToken.None);
-                ack();
+                await this.SendPrintEvent(PrintEventType.Canceled, CancellationToken.None);
             }
             catch (OperationCanceledException)
             {
@@ -272,10 +274,7 @@ namespace Print3DCloud.Client.Printers
             catch (Exception ex)
             {
                 this.logger.LogError("Failed to abort print\n{Exception}", ex);
-                ack(ex);
             }
-
-            await this.SendPrintEvent(PrintEventType.Canceled, CancellationToken.None);
         }
     }
 }
