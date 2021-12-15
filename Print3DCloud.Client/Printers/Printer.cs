@@ -83,6 +83,7 @@ namespace Print3DCloud.Client.Printers
         /// <inheritdoc/>
         public void Dispose()
         {
+            this.subscription.Dispose();
             this.Dispose(true);
             GC.SuppressFinalize(this);
         }
@@ -128,13 +129,7 @@ namespace Print3DCloud.Client.Printers
         /// Releases the unmanaged resources used by the <see cref="Printer"/> and optionally releases the managed resources.
         /// </summary>
         /// <param name="disposing">true to release both managed and unmanaged resources; false to release only unmanaged resources.</param>
-        protected virtual void Dispose(bool disposing)
-        {
-            if (disposing)
-            {
-                this.subscription.Dispose();
-            }
-        }
+        protected abstract void Dispose(bool disposing);
 
         /// <summary>
         /// Checks whether the printer is in the specified state. Includes sub-states.
