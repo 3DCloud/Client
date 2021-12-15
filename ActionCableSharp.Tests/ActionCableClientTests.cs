@@ -20,7 +20,7 @@ namespace ActionCableSharp.Tests
 
             var mockWebSocket = new Mock<IWebSocket>();
             mockWebSocket.Setup(ws => ws.SetRequestHeader(It.IsAny<string>(), It.IsAny<string?>()));
-            mockWebSocket.Setup(ws => ws.ConnectAsync(It.IsAny<Uri>(), It.IsAny<CancellationToken>())).Callback(() => connected = true).Returns(Task.CompletedTask);
+            mockWebSocket.Setup(ws => ws.ConnectAsync(It.IsAny<Uri>(), It.IsAny<CancellationToken>())).Callback(() => connected = true).Returns(Task.CompletedTask);
             mockWebSocket.SetupGet(ws => ws.IsConnected).Returns(() => connected);
 
             var mockWebSocketFactory = new Mock<IWebSocketFactory>();
@@ -199,35 +199,6 @@ namespace ActionCableSharp.Tests
 
             // Assert
             mockWebSocket.Verify(ws => ws.ReceiveAsync(It.IsAny<ArraySegment<byte>>(), cancellationToken), Times.Once);
-        }
-
-        [Fact]
-        public async Task ReceiveMessage_DisconnectMessage_SetsClientState()
-        {
-            // Arrange
-            var uri = new Uri("ws://example.com");
-
-            var mockWebSocket = new Mock<IWebSocket>();
-            mockWebSocket.SetupGet(ws => ws.IsConnected).Returns(true);
-
-            ArraySegment<byte> receivedMessage = JsonSerializer.SerializeToUtf8Bytes(new { type = "disconnect", reason = (string?)null, reconnect = false });
-            mockWebSocket
-                .Setup(ws => ws.ReceiveAsync(It.IsAny<ArraySegment<byte>>(), It.IsAny<CancellationToken>()))
-                .Callback((ArraySegment<byte> bytes, CancellationToken cancellationToken) => receivedMessage.CopyTo(bytes))
-                .ReturnsAsync(new WebSocketReceiveResult(receivedMessage.Count, WebSocketMessageType.Text, true));
-
-            var mockWebSocketFactory = new Mock<IWebSocketFactory>();
-            mockWebSocketFactory.Setup(f => f.CreateWebSocket()).Returns(mockWebSocket.Object);
-
-            var client = new ActionCableClient(uri, "dummy", mockWebSocketFactory.Object);
-            var cancellationToken = new CancellationToken(false);
-
-            // Act
-            await client.ConnectAsync(CancellationToken.None).ConfigureAwait(false);
-            await client.ReceiveMessage(cancellationToken).ConfigureAwait(false);
-
-            // Assert
-            Assert.Equal(ClientState.Disconnecting, client.State);
         }
 
         [Fact]
