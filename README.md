@@ -33,6 +33,9 @@ You should then be able to open the `Print3DCloud.sln` solution in your IDE and 
 
 Then, simply run the program using your IDE or by using `dotnet run` in the project folder you want to run.
 
+### Testing without a printer
+If you don't have access to a 3D printer while working, you can use the built-in dummy printer to test most of the features. To do so, simply run the program with the `--dummy-printer` command-line argument. This can be done using the `Print3DCloud.Client with Dummy Printer` launch profile (usually available through your IDE) or by passing it when calling `dotnet run`. Note that it is only available in Debug builds.
+
 ### Generating test coverage locally
 The `generate-coverage-report.ps1` PowerShell script can be used to generate an HTML coverage report locally. You can download PowerShell (cross-platform) [from the latest GitHub release](https://github.com/PowerShell/PowerShell/releases/latest). The script will install [ReportGenerator](https://github.com/danielpalme/ReportGenerator) as a global .NET tool if you do not have it already.
 

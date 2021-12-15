@@ -9,7 +9,9 @@ using System.Text;
 using System.Text.RegularExpressions;
 using System.Threading;
 using System.Threading.Tasks;
+using ActionCableSharp;
 using Microsoft.Extensions.Logging;
+using Print3DCloud.Client.ActionCable;
 
 namespace Print3DCloud.Client.Printers.Marlin
 {
@@ -59,11 +61,13 @@ namespace Print3DCloud.Client.Printers.Marlin
         /// <summary>
         /// Initializes a new instance of the <see cref="MarlinPrinter"/> class.
         /// </summary>
+        /// <param name="logger">The logger to use.</param>
+        /// <param name="subscription">The subscription to use when communicating with the server.</param>
         /// <param name="serialPortFactory">The factory to use when creating a stream for communicating with the printer.</param>
-        /// <param name="logger">The logger that should be used for this printer.</param>
         /// <param name="portName">Name of the serial port to which this printer should connect.</param>
         /// <param name="baudRate">The baud rate to be used for serial communication.</param>
-        public MarlinPrinter(ISerialPortFactory serialPortFactory, ILogger<MarlinPrinter> logger, string portName, int baudRate = 250_000)
+        public MarlinPrinter(ILogger<MarlinPrinter> logger, IActionCableSubscription subscription, ISerialPortFactory serialPortFactory, string portName, int baudRate = 250_000)
+            : base(logger, subscription)
         {
             this.serialPortFactory = serialPortFactory;
             this.logger = logger;
@@ -265,11 +269,20 @@ namespace Print3DCloud.Client.Printers.Marlin
         }
 
         /// <inheritdoc/>
-        public override Task ExecutePrintAsync(Stream stream, CancellationToken cancellationToken)
+        public override async Task StartPrintAsync(Stream stream, CancellationToken cancellationToken)
         {
-            if (this.State != PrinterState.Ready)
+            this.State = PrinterState.Downloading;
+
+            string directory = Path.Join(Directory.GetCurrentDirectory(), "tmp");
+            string path = Path.Join(directory, Guid.NewGuid().ToString());
+
+            Directory.CreateDirectory(directory);
+
+            this.logger.LogInformation("Saving print file to '{FilePath}'", path);
+
+            await using (FileStream writeFileStream = new(path, FileMode.Create, FileAccess.Write))
             {
-                throw new InvalidOperationException("Printer isn't ready");
+                await stream.CopyToAsync(writeFileStream, cancellationToken);
             }
 
             CancellationTokenSource cancellationTokenSource = new();
@@ -277,11 +290,11 @@ namespace Print3DCloud.Client.Printers.Marlin
             this.printCancellationTokenSource = cancellationTokenSource;
             this.State = PrinterState.Printing;
 
-            Task task = Task.Run(() => this.RunPrintAsync(stream, cancellationTokenSource.Token), cancellationToken);
+            FileStream fileStream = new(path, FileMode.Open, FileAccess.Read);
 
-            this.printTask = task.ContinueWith((t) => this.HandleTaskCompletedAsync(t, "Print"), cancellationToken);
-
-            return task;
+            this.printTask =
+                Task.Run(() => this.RunPrintAsync(fileStream, cancellationTokenSource.Token), cancellationToken)
+                    .ContinueWith(t => this.HandlePrintTaskCompletedAsync(t));
         }
 
         /// <inheritdoc/>
@@ -721,6 +734,20 @@ namespace Print3DCloud.Client.Printers.Marlin
             await this.SendCommandAsync("G28", cancellationToken); // home all axes
             await this.SendCommandAsync("M84", cancellationToken); // disable steppers
             await this.SendCommandAsync("G90", cancellationToken); // absolute positioning
+        }
+
+        private async Task HandlePrintTaskCompletedAsync(Task task)
+        {
+            await this.HandleTaskCompletedAsync(task, "Print");
+
+            if (task.IsCompletedSuccessfully)
+            {
+                await this.SendPrintEvent(PrintEventType.Success, CancellationToken.None);
+            }
+            else
+            {
+                await this.SendPrintEvent(PrintEventType.Errored, CancellationToken.None);
+            }
         }
 
         private async Task HandleTaskCompletedAsync(Task task, string name)

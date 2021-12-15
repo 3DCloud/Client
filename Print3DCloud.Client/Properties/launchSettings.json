@@ -2,7 +2,11 @@
   "profiles": {
     "Print3DCloud.Client": {
       "commandName": "Project",
-      "commandLineArgs": ""
+      "commandLineArgs": "--dummy-printer"
+    },
+    "Print3DCloud.Client with Dummy Printer": {
+      "commandName": "Project",
+      "commandLineArgs": "--dummy-printer"
     }
   }
 }

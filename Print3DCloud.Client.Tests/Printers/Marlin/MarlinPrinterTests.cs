@@ -3,6 +3,7 @@ using System.IO;
 using System.Text;
 using System.Text.RegularExpressions;
 using System.Threading.Tasks;
+using ActionCableSharp;
 using Moq;
 using Print3DCloud.Client.Printers;
 using Print3DCloud.Client.Printers.Marlin;
@@ -37,7 +38,12 @@ namespace Print3DCloud.Client.Tests.Printers.Marlin
             Mock<ISerialPortFactory> serialPortStreamFactoryMock = new();
             serialPortStreamFactoryMock.Setup(f => f.CreateSerialPort(It.IsAny<string>(), It.IsAny<int>())).Returns(() => serialPortStreamMock.Object);
 
-            MarlinPrinter printer = new(serialPortStreamFactoryMock.Object, TestHelpers.CreateLogger<MarlinPrinter>(this.testOutputHelper), "COM0", 125_000);
+            MarlinPrinter printer = new(
+                TestHelpers.CreateLogger<MarlinPrinter>(this.testOutputHelper),
+                new Mock<IActionCableSubscription>().Object,
+                serialPortStreamFactoryMock.Object,
+                "COM0",
+                125_000);
 
             Assert.Equal(PrinterState.Disconnected, printer.State);
 
@@ -73,7 +79,12 @@ namespace Print3DCloud.Client.Tests.Printers.Marlin
             Mock<ISerialPortFactory> serialPortStreamFactoryMock = new();
             serialPortStreamFactoryMock.Setup(f => f.CreateSerialPort(It.IsAny<string>(), It.IsAny<int>())).Returns(() => serialPortStreamMock.Object);
 
-            MarlinPrinter printer = new(serialPortStreamFactoryMock.Object, TestHelpers.CreateLogger<MarlinPrinter>(this.testOutputHelper), "COM0", 125_000);
+            MarlinPrinter printer = new(
+                TestHelpers.CreateLogger<MarlinPrinter>(this.testOutputHelper),
+                new Mock<IActionCableSubscription>().Object,
+                serialPortStreamFactoryMock.Object,
+                "COM0",
+                125_000);
 
             Assert.Equal(PrinterState.Disconnected, printer.State);
 
@@ -207,9 +218,9 @@ namespace Print3DCloud.Client.Tests.Printers.Marlin
 
             await using MemoryStream printStream = new(Encoding.ASCII.GetBytes("G0 X0 Y0"));
 
-            _ = printer.ExecutePrintAsync(printStream, TestHelpers.CreateTimeOutToken());
+            _ = printer.StartPrintAsync(printStream, TestHelpers.CreateTimeOutToken());
 
-            Assert.Equal(PrinterState.Printing, printer.State);
+            Assert.Equal(PrinterState.Downloading, printer.State);
 
             sim.SendMessage("ok");
 
@@ -220,22 +231,6 @@ namespace Print3DCloud.Client.Tests.Printers.Marlin
             await disconnectTask;
 
             Assert.Equal(PrinterState.Disconnected, printer.State);
-        }
-
-        [Fact]
-        public async Task StartPrintAsync_WhenPrinterIsNotReady_ThrowsException()
-        {
-            Mock<ISerialPortFactory> serialPortStreamFactoryMock = new();
-            serialPortStreamFactoryMock.Setup(f => f.CreateSerialPort(It.IsAny<string>(), It.IsAny<int>())).Returns<string, int>((s, i) => CreateSerialPort(s, i, new MemoryStream()).Object);
-
-            MarlinPrinter printer = new(serialPortStreamFactoryMock.Object, TestHelpers.CreateLogger<MarlinPrinter>(this.testOutputHelper), "COM0", 125_000);
-
-            InvalidOperationException exception = await Assert.ThrowsAsync<InvalidOperationException>(async () =>
-            {
-                await printer.ExecutePrintAsync(new MemoryStream(), TestHelpers.CreateTimeOutToken());
-            });
-
-            Assert.Equal("Printer isn't ready", exception.Message);
         }
 
         private static Mock<ISerialPort> CreateSerialPort(string portName, int baudRate, Stream baseStream)
@@ -272,7 +267,12 @@ namespace Print3DCloud.Client.Tests.Printers.Marlin
             Mock<ISerialPortFactory> serialPortStreamFactoryMock = new();
             serialPortStreamFactoryMock.Setup(f => f.CreateSerialPort(It.IsAny<string>(), It.IsAny<int>())).Returns(() => mock.Object);
 
-            MarlinPrinter printer = new(serialPortStreamFactoryMock.Object, TestHelpers.CreateLogger<MarlinPrinter>(this.testOutputHelper), "COM0", 125_000);
+            MarlinPrinter printer = new(
+                TestHelpers.CreateLogger<MarlinPrinter>(this.testOutputHelper),
+                new Mock<IActionCableSubscription>().Object,
+                serialPortStreamFactoryMock.Object,
+                "COM0",
+                125_000);
 
             Task connectTask = printer.ConnectAsync(TestHelpers.CreateTimeOutToken());
             sim.SendMessage("start");
