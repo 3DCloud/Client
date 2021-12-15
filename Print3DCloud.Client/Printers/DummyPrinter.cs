@@ -69,7 +69,6 @@ namespace Print3DCloud.Client.Printers
         public override async Task StartPrintAsync(Stream fileStream, CancellationToken cancellationToken)
         {
             this.State = PrinterState.Downloading;
-            await this.SendPrintEvent(PrintEventType.Downloading, CancellationToken.None);
 
             await Task.Delay(2_000, cancellationToken);
 
