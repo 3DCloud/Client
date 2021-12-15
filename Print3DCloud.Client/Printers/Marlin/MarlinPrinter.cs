@@ -296,6 +296,8 @@ namespace Print3DCloud.Client.Printers.Marlin
 
             FileStream fileStream = new(path, FileMode.Open, FileAccess.Read);
 
+            await this.SendPrintEvent(PrintEventType.Running, CancellationToken.None);
+
             this.printTask =
                 Task.Run(() => this.RunPrintAsync(fileStream, cancellationTokenSource.Token), cancellationToken)
                     .ContinueWith(t => this.HandlePrintTaskCompletedAsync(t, path));
@@ -760,7 +762,7 @@ namespace Print3DCloud.Client.Printers.Marlin
             }
             catch (IOException ex)
             {
-                this.logger.LogError("Failed to delete temporary file '{FilePath}'\n{Exception}", temporaryFilePath, ex);
+                this.logger.LogError(ex, "Failed to delete temporary file '{FilePath}'", temporaryFilePath);
             }
         }
 
@@ -768,16 +770,15 @@ namespace Print3DCloud.Client.Printers.Marlin
         {
             if (task.IsCompletedSuccessfully)
             {
-                this.logger.LogDebug("{name} task completed", name);
+                this.logger.LogDebug("{Name} task completed", name);
             }
             else if (task.IsCanceled)
             {
-                this.logger.LogDebug("{name} task canceled", name);
+                this.logger.LogDebug("{Name} task canceled", name);
             }
             else if (task.IsFaulted)
             {
-                this.logger.LogError("{name} task errored", name);
-                this.logger.LogError("{exception}", task.Exception!.ToString());
+                this.logger.LogError(task.Exception, "{Name} task errored", name);
 
                 await this.DisconnectAsync(CancellationToken.None);
             }
