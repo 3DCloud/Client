@@ -197,6 +197,7 @@ namespace Print3DCloud.Client.Printers
         /// <returns>A <see cref="Task"/> that completes once the event has been successfully sent.</returns>
         protected Task SendPrintEvent(PrintEventType eventType, Exception? exception, CancellationToken cancellationToken)
         {
+            this.logger.LogInformation("Sending {EventType} print event", eventType);
             return this.subscription.GuaranteePerformAsync(new PrintEventMessage(eventType, exception), cancellationToken);
         }
 
@@ -266,7 +267,6 @@ namespace Print3DCloud.Client.Printers
             try
             {
                 await this.AbortPrintAsync(CancellationToken.None);
-                await this.SendPrintEvent(PrintEventType.Canceled, CancellationToken.None);
             }
             catch (OperationCanceledException)
             {

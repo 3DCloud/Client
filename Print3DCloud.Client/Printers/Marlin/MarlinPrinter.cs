@@ -25,6 +25,8 @@ namespace Print3DCloud.Client.Printers.Marlin
         /// </summary>
         public const string DriverId = "marlin";
 
+        private const int CancelPrintTimeoutMs = 5_000;
+
         /// <summary>
         /// Directory in which temporary files are stored.
         /// </summary>
@@ -314,12 +316,21 @@ namespace Print3DCloud.Client.Printers.Marlin
             }
 
             this.State = PrinterState.Canceling;
+            await this.SendPrintEvent(PrintEventType.Canceled, cancellationToken);
 
             this.printCancellationTokenSource?.Cancel();
 
             if (this.printTask != null)
             {
-                await this.printTask;
+                await Task.WhenAny(this.printTask, Task.Delay(CancelPrintTimeoutMs, cancellationToken));
+
+                if (!this.printTask.IsCompleted)
+                {
+                    await this.DisconnectAsync(cancellationToken);
+                    await this.ConnectAsync(cancellationToken);
+
+                    await this.printTask;
+                }
             }
 
             this.Progress = null;
