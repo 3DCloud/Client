@@ -39,7 +39,6 @@ namespace Print3DCloud.Client.Printers.Marlin
         private const int MaxConnectRetries = 5;
         private const int RetryConnectDelayMs = 1000;
 
-        private static readonly string[] TimeIgnoreCommands = { "G4", "G28", "G29", "M109", "M190" };
         private static readonly string[] HeatingCommands = { "M109", "M190" };
 
         private static readonly Regex PerAxisCommandRegex = new(@"X(\d+(?:\.\d+)?) Y(\d+(?:\.\d+)?) Z(\d+(?:\.\d+)?) E(\d+(?:\.\d+)?)");
@@ -98,6 +97,9 @@ namespace Print3DCloud.Client.Printers.Marlin
             {
                 throw new InvalidOperationException("Printer is already connected");
             }
+
+            // we control the printer so we know that reconnecting means an ongoing print is no longer running
+            await this.SendPrintEvent(PrintEventType.Errored, CancellationToken.None);
 
             this.State = PrinterState.Connecting;
             int tries = 0;
@@ -557,10 +559,16 @@ namespace Print3DCloud.Client.Printers.Marlin
                         : 0;
                 }
 
-                Stopwatch stopwatch = Stopwatch.StartNew();
+                Stopwatch? stopwatch = null;
 
                 await foreach (string command in gCodeFile)
                 {
+                    // only start stopwatch once we reach the first step
+                    if (stopwatch == null && gCodeFile.ProgressSteps.Count > 0 && stream.Position > gCodeFile.ProgressSteps[0].BytePosition)
+                    {
+                        stopwatch = Stopwatch.StartNew();
+                    }
+
                     string commandToSend = command;
 
                     cancellationToken.ThrowIfCancellationRequested();
@@ -574,11 +582,6 @@ namespace Print3DCloud.Client.Printers.Marlin
                     else
                     {
                         this.State = PrinterState.Printing;
-                    }
-
-                    if (TimeIgnoreCommands.Contains(code))
-                    {
-                        stopwatch.Stop();
                     }
 
                     if (command.StartsWith('T'))
@@ -605,11 +608,9 @@ namespace Print3DCloud.Client.Printers.Marlin
 
                     await this.SendCommandAsync(commandToSend, cancellationToken).ConfigureAwait(false);
 
-                    stopwatch.Start();
-
                     // Stream.Position doesn't return the actual current position since
                     // StreamReader buffers in chunks, but it's good enough for our purposes.
-                    TimeEstimate estimate = progressCalculator.GetEstimate(stopwatch.Elapsed.TotalSeconds, stream.Position);
+                    TimeEstimate estimate = progressCalculator.GetEstimate(stopwatch?.Elapsed.TotalSeconds ?? 0, stream.Position);
                     this.TimeRemaining = estimate.TimeRemaining;
                     this.Progress = estimate.Progress;
                 }

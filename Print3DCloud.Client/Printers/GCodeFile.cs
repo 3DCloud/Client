@@ -137,7 +137,6 @@ namespace Print3DCloud.Client.Printers
                             case "PRINT.TIME":
                             case "TIME":
                                 this.TotalTime = int.Parse(value);
-                                steps.Add(new ProgressTimeStep(0, this.TotalTime));
                                 break;
 
                             // Cura
@@ -155,6 +154,11 @@ namespace Print3DCloud.Client.Printers
                                 steps.Add(new ProgressTimeStep(this.stream.Position, int.Parse(value, CultureInfo.InvariantCulture)));
                                 break;
                         }
+                    }
+
+                    if (line == ";LAYER:0")
+                    {
+                        steps.Add(new ProgressTimeStep(this.stream.Position, this.TotalTime));
                     }
                 }
             }
