@@ -77,9 +77,7 @@ namespace Print3DCloud.Client.Printers
             return false;
         }
 
-        /// <summary>
-        /// 
-        /// </summary>
+        /// <inheritdoc/>
         public void Dispose()
         {
             this.Dispose(true);

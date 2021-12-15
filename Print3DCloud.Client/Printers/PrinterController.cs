@@ -40,7 +40,7 @@ namespace Print3DCloud.Client.Printers
         }
 
         /// <summary>
-        /// Gets the printer controlled by this <see cref="PrinterController"/>
+        /// Gets the printer controlled by this <see cref="PrinterController"/>.
         /// </summary>
         public Printer Printer { get; }
 

@@ -92,6 +92,7 @@ namespace Print3DCloud.Client
         /// Message indicating a device has been configured as a printer.
         /// </summary>
         /// <param name="message">The received message.</param>
+        /// <param name="ack">A function to call to acknowledge the message was received.</param>
         private async void HandlePrinterConfigurationMessage(PrinterConfigurationMessage message, AcknowledgeCallback ack)
         {
             ack();
