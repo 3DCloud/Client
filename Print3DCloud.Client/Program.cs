@@ -1,4 +1,5 @@
 ﻿using System;
+using System.IO;
 using System.Threading;
 using System.Threading.Tasks;
 using ActionCableSharp;
@@ -6,6 +7,7 @@ using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Logging;
 using Print3DCloud.Client.Configuration;
+using Print3DCloud.Client.Printers.Marlin;
 using Rollbar;
 using Rollbar.PlugIns.Serilog;
 using Serilog;
@@ -27,6 +29,8 @@ namespace Print3DCloud.Client
             Config config = await Config.LoadAsync(CancellationToken.None).ConfigureAwait(false);
 
             await config.SaveAsync(CancellationToken.None);
+
+            CleanUpTemporaryFiles();
 
             using IHost host = CreateHostBuilder(args, config);
             IServiceProvider services = host.Services;
@@ -51,6 +55,8 @@ namespace Print3DCloud.Client
             logger.LogInformation("Shutting down");
 
             await config.SaveAsync(CancellationToken.None);
+
+            CleanUpTemporaryFiles();
 
             logger.LogInformation("Shut down");
         }
@@ -101,6 +107,14 @@ namespace Print3DCloud.Client
 
                 loggerConfiguration
                     .WriteTo.RollbarSink(rollbarConfig, config.RollbarLogLevel);
+            }
+        }
+
+        private static void CleanUpTemporaryFiles()
+        {
+            if (Directory.Exists(MarlinPrinter.TemporaryFileDirectory))
+            {
+                Directory.Delete(MarlinPrinter.TemporaryFileDirectory, true);
             }
         }
     }

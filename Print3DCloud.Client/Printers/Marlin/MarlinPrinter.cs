@@ -25,6 +25,11 @@ namespace Print3DCloud.Client.Printers.Marlin
         /// </summary>
         public const string DriverId = "marlin";
 
+        /// <summary>
+        /// Directory in which temporary files are stored.
+        /// </summary>
+        public static readonly string TemporaryFileDirectory = Path.Join(Directory.GetCurrentDirectory(), "tmp");
+
         private const string UltiGCodeFlavor = "UltiGCode";
         private const string ReportTemperaturesCommand = "M105";
         private const string FirmwareInfoCommand = "M115";
@@ -273,10 +278,9 @@ namespace Print3DCloud.Client.Printers.Marlin
         {
             this.State = PrinterState.Downloading;
 
-            string directory = Path.Join(Directory.GetCurrentDirectory(), "tmp");
-            string path = Path.Join(directory, Guid.NewGuid().ToString());
+            string path = Path.Join(TemporaryFileDirectory, Guid.NewGuid().ToString());
 
-            Directory.CreateDirectory(directory);
+            Directory.CreateDirectory(TemporaryFileDirectory);
 
             this.logger.LogInformation("Saving print file to '{FilePath}'", path);
 
@@ -294,7 +298,7 @@ namespace Print3DCloud.Client.Printers.Marlin
 
             this.printTask =
                 Task.Run(() => this.RunPrintAsync(fileStream, cancellationTokenSource.Token), cancellationToken)
-                    .ContinueWith(t => this.HandlePrintTaskCompletedAsync(t));
+                    .ContinueWith(t => this.HandlePrintTaskCompletedAsync(t, path));
         }
 
         /// <inheritdoc/>
@@ -736,7 +740,7 @@ namespace Print3DCloud.Client.Printers.Marlin
             await this.SendCommandAsync("G90", cancellationToken); // absolute positioning
         }
 
-        private async Task HandlePrintTaskCompletedAsync(Task task)
+        private async Task HandlePrintTaskCompletedAsync(Task task, string temporaryFilePath)
         {
             await this.HandleTaskCompletedAsync(task, "Print");
 
@@ -747,6 +751,16 @@ namespace Print3DCloud.Client.Printers.Marlin
             else
             {
                 await this.SendPrintEvent(PrintEventType.Errored, CancellationToken.None);
+            }
+
+            try
+            {
+                File.Delete(temporaryFilePath);
+                this.logger.LogTrace("Deleted '{FilePath}'", temporaryFilePath);
+            }
+            catch (IOException ex)
+            {
+                this.logger.LogError("Failed to delete temporary file '{FilePath}'\n{Exception}", temporaryFilePath, ex);
             }
         }
 
